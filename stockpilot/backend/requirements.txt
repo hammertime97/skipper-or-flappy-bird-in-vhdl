@@ -1,0 +1,7 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlmodel>=0.0.22
+anthropic>=2.3.0
+pyjwt>=2.9
+python-multipart>=0.0.9
+email-validator>=2.0
