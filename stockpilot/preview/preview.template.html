@@ -122,7 +122,7 @@ h2 { font-size: 18px; font-weight: 700; margin: 0; text-wrap: balance; }
         <button type="button" id="plan-pro" aria-pressed="false">Pro</button>
       </div>
     </div>
-    <p id="banner-text">A working copy of the app. It starts with a <strong>made-up eBay store</strong> (dummy data). Import a sample file for another platform, or your own file, from <a href="#import">Import</a>. Your files stay in this browser. The AI features run on your own Claude account and ask your permission first.</p>
+    <p id="banner-text">A working copy of the app. It starts with a <strong>made-up eBay store</strong> (dummy data). Import a sample file for another platform, or your own file, from <a href="#import">Import</a>. Your files stay in this browser. <strong>Everything works without an account or AI.</strong> A few screens have an optional “Check with AI” button for a second opinion.</p>
   </div>
   <div class="app">
     <div id="top"></div>
@@ -255,6 +255,7 @@ function home() {
   const s = d.stats;
   return head + `
   ${d.todo.map((t) => `<div class="card warn"><b>${esc(t.text)}</b><a class="btn" href="#${t.key === 'stock' ? 'stock-counts' : 'costs'}">${t.key === 'stock' ? 'Add stock counts' : 'Add costs'}</a></div>`).join('')}
+  ${planCard()}
   <div class="chips">${[['7d', 'Last 7 days'], ['30d', 'Last 30 days']].map(([v, l]) => `<button class="chip" data-period="${v}" aria-pressed="${S.period === v}">${l}</button>`).join('')}</div>
   <div class="tiles">${tile('Revenue', money(k.revenue, 0), k.change.revenue)}${tile('Profit after fees', money(k.profit, 0), k.change.profit)}${tile('Orders', num(k.orders), k.change.orders)}${tile('Units sold', num(k.units), k.change.units)}</div>
   <span class="muted">Selling fees of ${money(k.fees, 0)} are taken off profit. <a href="#fees">Change fee rates</a></span>
@@ -264,8 +265,23 @@ function home() {
   <div class="card"><div class="alert"><b style="color:var(--critical)">⛔</b><span>${d.inventory.out_of_stock} out of stock and still selling</span></div><div class="alert"><b style="color:var(--warning)">▾</b><span>${d.inventory.low_stock} running low</span></div><div class="alert"><b style="color:var(--muted)">•</b><span>${d.inventory.dead_stock} not sold in 30 days</span></div>${d.inventory.stock_unknown ? `<div class="alert"><b style="color:var(--warning)">?</b><span>${d.inventory.stock_unknown} without a stock count</span></div>` : ''}</div>
   ${d.low_stock.length ? `<h2>Running low</h2><div class="card list">${d.low_stock.map((p) => row(p, `${num(s[p.id].days_of_stock, 1)} days left · ${p.stock_qty} in stock`)).join('')}</div>` : ''}
   <h2>Top sellers (30 days)</h2><div class="card list">${d.top_sellers.map((p) => row(p, `${money(s[p.id].revenue_30d, 0)} · ${s[p.id].units_30d} sold · ${money(s[p.id].profit_30d, 0)} profit`)).join('')}</div>
+  ${insightCards()}
   ${d.dead_stock.length ? `<h2>Not selling</h2><div class="card list">${d.dead_stock.map((p) => row(p, `${p.stock_qty} in stock · ${money(p.stock_qty * p.cost_price, 0)} tied up`)).join('')}</div>` : ''}
   ${d.channels.length ? `<h2>Revenue by channel (30 days)</h2><div class="card">${d.channels.map((c) => `<div class="row between"><span style="text-transform:capitalize">${esc(c.channel)}</span><span class="label num">${money(c.revenue, 0)}</span></div>`).join('')}</div>` : ''}`;
+}
+
+function planCard() {
+  const plan = smartPlanData(), high = plan.actions.filter((a) => a.priority === 'high').length;
+  return `<a class="card tap" href="#weekly-plan" style="gap:4px"><span class="label">This week's plan</span><b>${esc(plan.headline)}</b><span class="sub">${plan.actions.length ? `${plan.actions.length} thing${plan.actions.length > 1 ? 's' : ''} on your list${high ? ` · ${high} urgent` : ''}` : 'Nothing to do right now'} →</span></a>`;
+}
+function insightCards() {
+  const { focus, bundles } = insightsData(), A = focus.items.filter((r) => r.group === 'A'), losing = focus.items.filter((r) => r.group === 'losing');
+  const money_ = `<h2>Your money makers (90 days)</h2><div class="card" style="gap:10px"><span>${esc(focus.summary)}</span>
+    ${A.slice(0, 6).map((r) => `<a href="#product-${r.id}" style="display:grid;gap:3px;text-decoration:none;color:inherit"><div class="row between"><span class="trunc grow">${esc(r.name)}</span><span class="label num">${money(r.profit, 0)} · ${Math.round(r.share * 100)}%</span></div><div class="meter"><i style="width:${Math.max(2, Math.round(r.share * 100))}%"></i></div></a>`).join('')}
+    ${losing.length ? `<div class="alert"><b style="color:var(--critical)">!</b><span>Losing money: ${losing.slice(0, 3).map((r) => `<a href="#product-${r.id}">${esc(r.name)}</a> (${money(r.profit, 0)})`).join(', ')}. Check the price or what you pay.</span></div>` : ''}
+    ${focus.missing_cost ? `<span class="muted">${focus.missing_cost} selling products have no cost yet, so their profit looks higher than it is. <a href="#costs">Add costs</a></span>` : ''}</div>`;
+  const pairs = `<h2>Bought together</h2><div class="card" style="gap:10px">${bundles.pairs.length ? bundles.pairs.slice(0, 4).map((pr) => `<div style="display:grid;gap:2px"><b>${esc(pr.a.name)} + ${esc(pr.b.name)}</b><span class="sub">In ${pr.orders_together} orders, ${pr.lift}× more often than chance. Offer a bundle, or show one on the other's page.</span></div>`).join('') : `<span class="sub">${esc(bundles.note)}</span>`}</div>`;
+  return money_ + pairs;
 }
 
 function invMatch(p, f, st) {
@@ -317,7 +333,7 @@ function fcRow(it) {
   const p = it.product;
   if (it.locked) return `<a class="card tap" href="#pro"><b>${esc(p.name)}</b><span class="lock">🔒 Pro forecast</span></a>`;
   const f = it.forecast, pl = it.stock_plan;
-  return `<a class="card tap" href="#product-${p.id}" style="gap:6px;padding:12px"><div class="row between" style="align-items:flex-start"><div class="grow"><div class="trunc" style="font-weight:700">${esc(p.name)}</div><div class="muted">${TREND[f.trend]}${f.trend === 'rising' || f.trend === 'declining' ? ' ' + pct(f.trend_pct) : ''} · ${f.accuracy != null ? Math.round(f.accuracy * 100) + '% accurate' : 'new, not tested yet'}</div></div>${pill(pl.status)}</div><div class="row between"><div><div class="hero" style="font-size:20px">${num(f.next_week)} units</div><div class="muted num">likely ${num(f.lower[0])}–${num(f.upper[0])} · ${money(it.next_week_revenue, 0)}</div></div>${pl.reorder_qty > 0 ? `<div style="text-align:right"><div class="label">Order</div><b class="num">${num(pl.reorder_qty)} units</b></div>` : ''}</div><span class="sub">${esc(pl.reason)}</span></a>`;
+  return `<a class="card tap" href="#product-${p.id}" style="gap:6px;padding:12px"><div class="row between" style="align-items:flex-start"><div class="grow"><div class="trunc" style="font-weight:700">${esc(p.name)}</div><div class="muted">${TREND[f.trend]}${f.trend === 'rising' || f.trend === 'declining' ? ' ' + pct(f.trend_pct) : ''} · ${f.accuracy != null ? Math.round(f.accuracy * 100) + '% accurate' : 'new, not tested yet'}</div></div>${pill(pl.status)}</div><div class="row between"><div><div class="hero" style="font-size:20px">${num(f.next_week)} units</div><div class="muted num">likely ${num(f.lower[0])}–${num(f.upper[0])} · ${money(it.next_week_revenue, 0)}</div></div>${pl.reorder_qty > 0 ? `<div style="text-align:right"><div class="label">Order</div><b class="num">${num(pl.reorder_qty)} units</b>${pl.order_by ? `<div class="muted">${orderWhen(pl.order_by)}</div>` : ''}</div>` : ''}</div><span class="sub">${esc(pl.reason)}</span></a>`;
 }
 
 function product(id) {
@@ -337,7 +353,7 @@ function product(id) {
     ? `<div class="card" style="gap:6px"><h2>How this forecast was made</h2><span class="sub">${fc.models.length} methods blended. Each was tested by pretending it was 1 to ${fc.tested_weeks || 8} weeks ago and comparing its forecast with what really sold.</span>${fc.models.map((m) => `<div style="display:grid;gap:3px"><div class="row between"><span>${esc(m.label)}</span><span class="label num">${Math.round(m.weight * 100)}% of the blend</span></div><div class="meter"><i style="width:${Math.round(m.weight * 100)}%"></i></div></div>`).join('')}<span class="muted">${fc.accuracy != null ? `Blend accuracy on the tested weeks: ${Math.round(fc.accuracy * 100)}%.` : 'Not enough weeks yet to measure accuracy.'}${fc.seasonal ? ' Includes the same weeks last year.' : ''}${fc.intermittent ? ' Uses methods made for slow, lumpy sellers.' : ''}</span></div>`
     : `<div class="card"><span class="sub">${fc.method === 'none' ? 'No sales yet, so nothing to forecast.' : 'New product: this is a weighted average of its first weeks. It switches to the tested blend after 4 weeks of sales.'}</span></div>`;
   return head + `<div class="card"><span class="label">Next 7 days forecast</span><span class="hero">${num(fc.next_week)} units</span><span class="sub">Likely between ${num(fc.lower[0])} and ${num(fc.upper[0])} · ${money(fc.next_week * p.sell_price, 0)} revenue · ${TREND[fc.trend].slice(2)}${fc.trend === 'rising' || fc.trend === 'declining' ? ' ' + pct(fc.trend_pct) + ' vs prior 4 weeks' : ''}</span>${barChart(bars, { readout: (d) => `${d.label}: ${num(d.value, 1)} units`, fmt: (v) => num(v), firstLabel: '12 wks ago', lastLabel: '+4 wks' })}</div>
-  <div class="card"><h2>Stock plan</h2><span>${esc(plan.reason)}</span>${plan.status === 'stock_unknown' ? '' : `<div class="tiles">${tile('Runs out', plan.stockout_date ? shortDate(plan.stockout_date) : 'Not soon')}${tile('Suggested order', num(plan.reorder_qty) + ' units')}${tile('Weeks of cover', plan.weeks_of_cover == null ? '–' : num(plan.weeks_of_cover, 1))}${tile('Safety stock', num(plan.safety_stock) + ' units')}</div><span class="muted">The order covers ${p.lead_time_days} days supplier lead time + 2 weeks of sales, plus safety stock${p.incoming_qty ? `, minus ${p.incoming_qty} units already on order` : ''}.</span>`}${plan.notes.length ? `<ul class="bullets">${plan.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}</div>` + how + numbers + actions + recentCard;
+  <div class="card"><h2>Stock plan</h2>${plan.order_by ? `<b style="color:${plan.status === 'low' ? 'var(--text)' : 'var(--negative)'}">Order ${num(plan.reorder_qty)} units ${orderWhen(plan.order_by)}</b>` : ''}<span>${esc(plan.reason)}</span>${plan.status === 'stock_unknown' ? '' : `<div class="tiles">${tile('Runs out', plan.stockout_date ? shortDate(plan.stockout_date) : 'Not soon')}${tile('Suggested order', num(plan.reorder_qty) + ' units')}${tile('Weeks of cover', plan.weeks_of_cover == null ? '–' : num(plan.weeks_of_cover, 1))}${tile('Safety stock', num(plan.safety_stock) + ' units')}</div><span class="muted">The order covers ${p.lead_time_days} days supplier lead time + 2 weeks of sales, plus safety stock${p.incoming_qty ? `, minus ${p.incoming_qty} units already on order` : ''}.</span>`}${plan.notes.length ? `<ul class="bullets">${plan.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}</div>` + how + numbers + actions + recentCard;
 }
 
 /* ---------- import wizard ---------- */
@@ -391,6 +407,7 @@ function sheetCard(t, i) {
     ${t.missing.length ? `<div style="display:grid;gap:10px"><b>Help us with ${t.missing.length === 1 ? 'one column' : 'a few columns'}</b>
       ${a.platform === 'spreadsheet' ? `<div style="display:grid;gap:4px"><span class="label">This sheet is a…</span><div class="chips">${[['orders', 'List of sales'], ['stock', 'Stock list']].map(([v, l]) => `<button class="chip" data-sheetkind="${i}:${v}" aria-pressed="${a.kind === v}">${l}</button>`).join('')}</div></div>` : ''}
       ${t.missing.map((role) => `<div style="display:grid;gap:4px"><span class="label">Which column is “${esc(labels[role])}”?</span><div class="chips">${a.columns.map((c, ci) => c ? `<button class="chip" data-mapcol="${i}:${role}:${ci}">${esc(c)}</button>` : '').join('')}</div></div>`).join('')}
+      <button class="btn secondary small" data-aimap="${i}">Let AI guess the columns (optional)</button>
       <div class="tablewrap"><table><tbody>${raw.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></div>` : ''}
   </div>`;
 }
@@ -404,7 +421,6 @@ async function readFile(name, buf, isSample) {
   try {
     const tables = E.readTables(name, buf).map(({ sheet, rows }) => ({ sheet, rows, a: E.analyse(rows), aiMapped: false }));
     for (const t of tables) {
-      if (!t.a.confident) await aiMapColumns(t);
       recompute(t);
     }
     I.tables = tables; I.step = 'preview';
@@ -414,10 +430,9 @@ async function readFile(name, buf, isSample) {
   render();
 }
 async function aiMapColumns(t) {
-  const sample = await getSample(); if (!sample) return;
+  const sample = await getSample(); if (!sample) { toast("AI isn't available here. Pick the columns above; it only takes a moment."); return; }
   const roles = ['date', 'order_id', 'sku', 'name', 'quantity', 'unit_price', 'line_total', 'status', 'stock', 'cost', 'category', 'supplier'];
   const rows = t.rows.slice(t.a.header_row, t.a.header_row + 6).map((r) => r.join(' | ')).join('\n');
-  S.imp.busyText = "We don't recognise these columns, so Claude is reading them…"; render();
   try {
     const g = await sample.json(`You read the first rows of a spreadsheet an online seller uploaded and say which column holds what. The file is either a list of sales (each row: a date, a product, a quantity, maybe a price) or a stock list (each row: a product and how many are in stock, maybe cost and price).\n\nColumn headings, then example rows (cells separated by " | "):\n${rows}\n\nReply with only JSON: {"kind": "orders" | "stock" | "unknown", ${roles.map((r) => `"${r}": "<exact heading or empty>"`).join(', ')}}. Fields: ${roles.map((r) => `${r} = ${CFG.role_labels[r]}`).join('; ')}. Use an empty string when no column fits; never guess.`, { modelTier: 'quick' });
     if (!g || g.kind === 'unknown') return;
@@ -490,29 +505,34 @@ function account() {
 }
 
 function pro() {
-  setTop('<a href="#ai">‹ Back</a><span>StockPilot Pro</span>');
-  const feats = ['Weekly forecasts for every product', 'AI Weekly Plan every week, checked against events and news', "Trend Scout: what's booming in your niche", 'Product Check: should I sell this?', 'Ask StockPilot assistant', 'AI listing writer'];
+  setTop('<a href="#ai">‹ Tools</a><span>StockPilot Pro</span>');
+  const feats = ['Weekly forecasts and stock plans for every product', 'AI second opinion on your Weekly Plan, checked against live events and news', "Live Trend Scout: AI searches the web for what's booming in your exact niche", 'Deeper AI Product Check with web research', 'AI assistant for any question about your store', 'AI-polished listings'];
   if (S.plan === 'pro') return `<h1>You're on Pro</h1><div class="card"><ul class="bullets">${feats.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div><button class="btn secondary" data-plan="free">Switch the preview back to Free</button>`;
-  return `<div><h1>Sell smarter with Pro</h1><p class="sub">Forecast every product, get your AI plan every week, and spot trends before your competitors.</p></div><div class="card"><h2>Pro</h2><ul class="bullets">${feats.map((f) => `<li>${esc(f)}</li>`).join('')}</ul><span class="muted">Free plan: dashboard and stock · forecasts for your top ${FREE_LIMIT} products · 3 AI requests a month</span></div><button class="btn" data-plan="pro">Monthly · price you set in Google Play</button><button class="btn secondary" data-plan="pro">Yearly · price you set in Google Play</button><span class="muted">In the app these open the Google Play payment sheet. Here they switch the preview to Pro.</span>`;
+  return `<div><h1>Sell smarter with Pro</h1><p class="sub">Forecast every product, get your AI plan every week, and spot trends before your competitors.</p></div><div class="card"><h2>Pro</h2><ul class="bullets">${feats.map((f) => `<li>${esc(f)}</li>`).join('')}</ul><span class="muted">Free for everyone: dashboard, stock, imports, weekly to-do list, money makers, bundles, profit calculator, trends library, product check, instant answers and listing drafts · forecasts for your top ${FREE_LIMIT} products · 3 AI requests a month</span></div><button class="btn" data-plan="pro">Monthly · price you set in Google Play</button><button class="btn secondary" data-plan="pro">Yearly · price you set in Google Play</button><span class="muted">In the app these open the Google Play payment sheet. Here they switch the preview to Pro.</span>`;
 }
 
-/* ---------- AI ---------- */
+/* ---------- Tools (everything works without AI; AI is an optional extra) ---------- */
 let samplePromise = null;
 function getSample() { if (!samplePromise) samplePromise = window.claude?.use ? window.claude.use('sample').catch(() => null) : Promise.resolve(null); return samplePromise; }
-const AI_ERR = { not_granted: 'You chose not to let this page use Claude. Reload the page to be asked again.', sampling_disabled: 'Claude is not available for this account.', rate_limited: 'Claude is busy or your usage limit was reached. Try again in a little while.', refused: 'Claude declined this request. Try different wording.', invalid_json: "Claude's answer didn't come back in the right shape. Try again.", session_expired: 'Please sign in to Claude again.', prompt_too_large: 'Too much data for one request.', upstream_error: 'Something went wrong reaching Claude. Try again.' };
-const aiErrorText = (e) => AI_ERR[e?.code] || (e?.code === 'cancelled' ? '' : 'Something went wrong reaching Claude. Try again.');
-const PREVIEW_NOTE = 'In this preview Claude answers from its own knowledge. The app version also searches the web live.';
+const AI_OFF = "AI isn't available in this view, and that's fine: everything else on this screen works without it. In the real app, AI runs on StockPilot's own servers, so sellers never need a Claude account.";
+const AI_ERR = { not_granted: 'You chose not to use AI here. Everything else still works.', sampling_disabled: AI_OFF, capability_disabled: AI_OFF, not_declared: AI_OFF, capability_removed: AI_OFF, rate_limited: 'AI is busy right now. Try again in a little while; everything else still works.', refused: 'AI declined this request. Try different wording.', invalid_json: "AI's answer didn't come back in the right shape. Try again.", session_expired: AI_OFF, prompt_too_large: 'Too much data for one AI request.', upstream_error: AI_OFF };
+const aiErrorText = (e) => AI_ERR[e?.code] || (e?.code === 'cancelled' ? '' : AI_OFF);
+const PREVIEW_NOTE = 'In this preview AI answers from its own knowledge. The app version also searches the web live.';
+const aiNote = (key) => S.reports[key + '_error'] ? `<div class="card" style="gap:4px"><b>AI extra not available</b><span class="sub">${esc(S.reports[key + '_error'])}</span></div>` : '';
+const badge = (t, color = 'var(--good)') => `<span class="pill" style="border-color:${color}">${t}</span>`;
+const NO_AI = badge('Works without AI');
 
 function aiHub() {
   const feats = [
-    ['weekly-plan', 'Weekly Plan', 'Your forecasts turned into a to-do list: what to reorder, what to push, what to clear, and how upcoming events could change next week.', 'Open this week’s plan'],
-    ['trends', 'Trend Scout', 'What’s booming in your niche right now, with a button to add each product to your store.', 'Open the Trends tab'],
-    ['product-check', 'Product Check', 'Thinking of adding something? Get a go / test / skip verdict with demand, competition and margin scores.', 'Check a product idea'],
-    ['ask', 'Ask StockPilot', '“What should I reorder?” “Which product made me the most profit this month?” Answers come from your data.', 'Ask a question'],
-    ['listing', 'Listing Writer', 'SEO titles, bullet points, descriptions and hashtags for Shopify, TikTok Shop, Amazon, eBay or Etsy.', 'Write a listing'],
+    ['weekly-plan', 'Weekly Plan', 'Your forecasts turned into a to-do list: what to reorder and by which day, what to push, what to clear.', 'Open this week’s plan', true],
+    ['calculator', 'Profit & ads calculator', 'What one sale really earns after product cost, shipping and platform fees, and how much you can spend on ads before you lose money.', 'Work out my profit', true],
+    ['trends', 'Trending products', 'Researched trends for 9 niches, with a button to add each product to your store.', 'Open the Trends tab', true],
+    ['product-check', 'Product Check', 'Thinking of adding something? Check the margin, whether it’s trending, and rule or shipping red flags.', 'Check a product idea', true],
+    ['ask', 'Ask StockPilot', '“What should I reorder?” “Which product made me the most profit?” Instant answers from your data.', 'Ask a question', true],
+    ['listing', 'Listing Writer', 'A ready-to-edit title, bullet points, description and hashtags for Shopify, TikTok Shop, Amazon, eBay or Etsy.', 'Write a listing', true],
   ];
-  return `<div><h1>AI tools</h1><p class="sub">Built on your sales data. In this preview they run on your own Claude account, using its most capable model for planning and research.</p></div>
-  ${feats.map(([h, t, b, c]) => `<a class="card tap" href="#${h}"><h2>${t}</h2><span class="sub">${b}</span><b>${c} →</b></a>`).join('')}`;
+  return `<div><h1>Tools</h1><p class="sub">Every tool works straight away, for everyone. Where it helps, there's an optional “Check with AI” button for a second opinion.</p></div>
+  ${feats.map(([h, t, b, c, off]) => `<a class="card tap" href="#${h}"><div class="row between wrap-row"><h2>${t}</h2>${off ? NO_AI : ''}</div><span class="sub">${b}</span><b>${c} →</b></a>`).join('')}`;
 }
 
 function compactData() {
@@ -522,151 +542,330 @@ function compactData() {
     kpis_last_7_days: d.kpis['7d'], kpis_last_30_days: d.kpis['30d'], inventory: d.inventory,
     store_forecast: { next_weeks_units: F.store.next_weeks_units.map(r2), next_weeks_revenue: F.store.next_weeks_revenue.map(r2), next_weeks_profit: F.store.next_weeks_profit.map(r2), restock_budget: F.store.restock_budget },
     upcoming_events: F.events,
-    products: F.items.map((it) => ({ sku: it.product.sku, name: it.product.name, price: it.product.sell_price, unit_cost: it.product.cost_price, stock: it.product.stock_qty, stock_known: it.product.stock_known, lead_time_days: it.product.lead_time_days, fulfilment: it.product.fulfilment, last_8_weeks_units: it.forecast.history.slice(-8), next_weeks_units: it.forecast.weeks.map(r2), next_week_range: [r2(it.forecast.lower[0]), r2(it.forecast.upper[0])], trend: it.forecast.trend, trend_vs_prior_4_weeks: r2(it.forecast.trend_pct), forecast_accuracy: it.forecast.accuracy == null ? null : r2(it.forecast.accuracy), stock_status: it.stock_plan.status, runs_out_on: it.stock_plan.stockout_date, suggested_reorder_qty: it.stock_plan.reorder_qty, target_stock: it.stock_plan.target_stock, profit_last_30_days: r2(it.stats.profit_30d) })),
+    products: F.items.map((it) => ({ sku: it.product.sku, name: it.product.name, price: it.product.sell_price, unit_cost: it.product.cost_price, stock: it.product.stock_qty, stock_known: it.product.stock_known, lead_time_days: it.product.lead_time_days, fulfilment: it.product.fulfilment, last_8_weeks_units: it.forecast.history.slice(-8), next_weeks_units: it.forecast.weeks.map(r2), next_week_range: [r2(it.forecast.lower[0]), r2(it.forecast.upper[0])], trend: it.forecast.trend, trend_vs_prior_4_weeks: r2(it.forecast.trend_pct), forecast_accuracy: it.forecast.accuracy == null ? null : r2(it.forecast.accuracy), stock_status: it.stock_plan.status, runs_out_on: it.stock_plan.stockout_date, order_by: it.stock_plan.order_by, suggested_reorder_qty: it.stock_plan.reorder_qty, target_stock: it.stock_plan.target_stock, profit_last_30_days: r2(it.stats.profit_30d) })),
   };
 }
 
 async function runAI(key, fn) {
   if (S.busy[key]) return;
-  const sample = await getSample();
-  if (!sample) { S.reports[key + '_error'] = 'The AI features need this page to be open inside Claude. Open the link in the Claude app or at claude.ai.'; render(); return; }
   S.busy[key] = true; S.reports[key + '_error'] = ''; render();
-  try { S.reports[key] = Object.assign(await fn(sample), { created: Date.now() }); saveLocal(); }
-  catch (e) { S.reports[key + '_error'] = aiErrorText(e); }
+  try {
+    const sample = await getSample();
+    if (!sample) throw { code: 'capability_disabled' };
+    S.reports[key] = Object.assign(await fn(sample), { created: Date.now() }); saveLocal();
+  } catch (e) { S.reports[key + '_error'] = aiErrorText(e); }
   finally { S.busy[key] = false; render(); }
 }
 
-const PLAN_RULES = `You are the planning analyst inside StockPilot, an app for e-commerce and dropshipping sellers. You get the seller's KPIs and, per product, a statistical demand forecast tested on their own sales (units for the next weeks, a likely range, trend, accuracy) plus a stock plan with reorder quantities, and the shopping events coming up.
+/* ---------- insights (no AI) ---------- */
+let insCache = null;
+function insightsData() {
+  forecastsData();
+  const key = fcCache.key + ':' + JSON.stringify(S.store.user.fees || {});
+  if (!insCache || insCache.key !== key) {
+    const now = NOW(), ps = products();
+    insCache = { key, focus: E.focusList(S.store, ps, now), bundles: E.bundles(S.store, ps, now) };
+  }
+  return insCache;
+}
+function smartPlanData() {
+  const F = forecastsData(), I = insightsData();
+  return E.smartPlan(F, E.dashboard(S.store, NOW()), I.focus, I.bundles, cur(), new Date(NOW()).toISOString().slice(0, 10));
+}
+const orderWhen = (iso) => (iso <= new Date(NOW()).toISOString().slice(0, 10) ? 'today' : 'by ' + E.fmtDate(iso));
+const PRI = { high: 'var(--critical)', medium: 'var(--warning)', low: 'var(--border)' };
+function actionCard(a, bySku) {
+  const it = bySku[String(a.sku || '').toUpperCase()];
+  const link = it ? `href="#product-${it.product.id}"` : a.kind === 'setup' ? `href="#${/cost/.test(a.title) ? 'costs' : 'stock-counts'}"` : '';
+  const tag = link ? 'a' : 'div';
+  return `<${tag} ${link} class="card ${link ? 'tap' : ''} action ${esc(a.priority)}" style="gap:4px"><div class="row between"><span class="pill" style="border-color:${PRI[a.priority] || 'var(--border)'}">${esc(a.priority)} priority</span>${a.sku ? `<span class="muted">${esc(a.sku)}</span>` : ''}</div><b>${esc(a.title)}</b><span class="sub">${esc(a.detail)}</span></${tag}>`;
+}
+
+const PLAN_RULES = `You are the planning analyst inside StockPilot, an app for e-commerce and dropshipping sellers. You get the seller's KPIs and, per product, a statistical demand forecast tested on their own sales (units for the next weeks, a likely range, trend, accuracy) plus a stock plan with reorder quantities and order-by dates, and the shopping events coming up. The seller already has a to-do list built from these numbers; your job is a second opinion.
 1. Suggest forecast adjustments ONLY where an upcoming event or well-known seasonality for this kind of product gives a concrete reason that the seller's history can't reflect. Most products need none. Each is a % change to next week's forecast, between -60 and 150, with a one-sentence reason.
-2. Write the weekly plan. Use only the numbers provided; never invent sales, prices or quantities; quote the figures you cite. Be concrete: name the product, the quantity to order, the day it runs out. Prioritise by money at stake: stock-outs on good sellers first, then rising products to push, then dead stock to clear. Where accuracy is below 0.6, say the forecast is rough. Dropship items: the stock figure is the supplier's. Products with stock_known=false: ask the seller to enter stock and give the target units. If many products have unit_cost 0, say profit needs costs. Plain, friendly English for a busy small-business owner.`;
+2. Add up to 4 extra actions the numbers alone would miss (seasonal angles, marketing timing, risks). Use only the numbers provided; never invent sales, prices or quantities. Plain, friendly English for a busy small-business owner.`;
 
 function weeklyPlan() {
-  setTop('<a href="#ai">‹ AI</a><span>Weekly Plan</span>');
+  setTop('<a href="#ai">‹ Tools</a><span>Weekly Plan</span>');
   if (!products().length) return emptyState();
-  const r = S.reports.plan, err = S.reports.plan_error;
-  const gen = `<button class="btn${r ? ' secondary' : ''}" data-ai="plan" ${S.busy.plan ? 'disabled' : ''}>${r ? 'Make a new plan' : 'Make my plan'}</button>`;
-  const F = forecastsData();
-  let body = '';
-  if (r) {
-    const bySku = Object.fromEntries(F.items.filter((i) => !i.locked).map((i) => [i.product.sku.toUpperCase(), i]));
+  const F = forecastsData(), plan = smartPlanData(), r = S.reports.plan;
+  const bySku = Object.fromEntries(F.items.filter((i) => !i.locked).map((i) => [i.product.sku.toUpperCase(), i]));
+  let ai = '';
+  if (r && !S.busy.plan) {
     const adj = (r.adjustments || []).map((a) => ({ ...a, it: bySku[String(a.sku).toUpperCase()] })).filter((a) => a.it).map((a) => ({ ...a, change: Math.max(-60, Math.min(150, +a.change_pct || 0)) }));
-    body = `<div class="card"><span class="muted">Made ${ago(r.created)}</span><h2>${esc(r.headline)}</h2><span>${esc(r.summary)}</span></div>
-    <div class="tiles">${tile('Next week revenue', money(F.store.next_weeks_revenue[0], 0))}${tile('Next week profit', money(F.store.next_weeks_profit[0], 0))}</div>
-    <div class="card"><span class="label">Outlook</span><span>${esc(r.next_week_outlook)}</span></div>
-    ${adj.length ? `<h2>AI forecast adjustments</h2><span class="muted">Changes to next week's forecast for things your sales history can't know about.</span>${adj.map((a) => `<a class="card tap" href="#product-${a.it.product.id}" style="gap:4px"><b>${esc(a.it.product.name)}</b><span>${num(a.it.forecast.next_week)} → ${num(a.it.forecast.next_week * (1 + a.change / 100))} units next week (${a.change > 0 ? '+' : ''}${Math.round(a.change)}%)</span><span class="sub">${esc(a.reason)}</span></a>`).join('')}` : ''}
-    <h2>Do this week</h2>${(r.actions || []).map((a) => { const it = bySku[String(a.sku || '').toUpperCase()]; return `<${it ? `a href="#product-${it.product.id}"` : 'div'} class="card ${it ? 'tap' : ''} action ${esc(a.priority)}" style="gap:4px"><div class="row between"><span class="pill" style="border-color:${a.priority === 'high' ? 'var(--critical)' : a.priority === 'medium' ? 'var(--warning)' : 'var(--border)'}">${esc(a.priority)} priority</span>${a.sku ? `<span class="muted">${esc(a.sku)}</span>` : ''}</div><b>${esc(a.title)}</b><span class="sub">${esc(a.detail)}</span></${it ? 'a' : 'div'}>`; }).join('')}
-    ${(r.opportunities || []).length ? `<h2>Opportunities</h2><div class="card"><ul class="bullets">${r.opportunities.map((o) => `<li>${esc(o)}</li>`).join('')}</ul></div>` : ''}
-    ${(r.risks || []).length ? `<h2>Watch out for</h2><div class="card"><ul class="bullets">${r.risks.map((o) => `<li>${esc(o)}</li>`).join('')}</ul></div>` : ''}
-    <span class="muted">${PREVIEW_NOTE}</span>`;
+    ai = `<h2>AI second opinion</h2><span class="muted">Made ${ago(r.created)}. ${PREVIEW_NOTE}</span>
+    ${r.summary ? `<div class="card">${esc(r.summary)}</div>` : ''}
+    ${adj.length ? adj.map((a) => `<a class="card tap" href="#product-${a.it.product.id}" style="gap:4px"><b>${esc(a.it.product.name)}</b><span>${num(a.it.forecast.next_week)} → ${num(a.it.forecast.next_week * (1 + a.change / 100))} units next week (${a.change > 0 ? '+' : ''}${Math.round(a.change)}%)</span><span class="sub">${esc(a.reason)}</span></a>`).join('') : '<span class="sub">No forecast changes suggested: your sales history already covers what’s coming.</span>'}
+    ${(r.actions || []).map((a) => actionCard(a, bySku)).join('')}
+    ${(r.risks || []).length ? `<div class="card"><span class="label">Watch out for</span><ul class="bullets">${r.risks.map((o) => `<li>${esc(o)}</li>`).join('')}</ul></div>` : ''}`;
   }
-  return `<span class="sub">Your forecasts and stock levels, turned into this week's to-do list. Make a new plan each Monday.</span>
-  ${S.busy.plan ? spinner('Claude is reading your sales, forecasts, stock and upcoming events. This can take a minute or two.') : ''}
-  ${err ? `<div class="card" style="border-color:var(--critical)">${esc(err)}</div>` : ''}
-  ${!r && !S.busy.plan ? `<div class="card"><h2>No plan yet</h2><span class="sub">Claude reads every forecast and stock level, then tells you what to do first.</span>${gen}</div>` : ''}
-  ${S.busy.plan ? '' : body}${r && !S.busy.plan ? gen : ''}`;
+  return `<div class="row between wrap-row"><span class="sub">Built from your forecasts, stock and profit. Updated every time your data changes.</span>${NO_AI}</div>
+  <div class="card"><h2>${esc(plan.headline)}</h2><span>${esc(plan.summary)}</span></div>
+  <div class="tiles">${tile('Next week revenue', money(F.store.next_weeks_revenue[0], 0))}${tile('Next week profit', money(F.store.next_weeks_profit[0], 0))}</div>
+  <div class="card"><span class="label">Outlook</span><span>${esc(plan.next_week_outlook)}</span></div>
+  <h2>Do this week</h2>${plan.actions.length ? plan.actions.map((a) => actionCard(a, bySku)).join('') : '<div class="card"><b>All clear ✓</b><span class="sub">Stock covers expected sales on every product.</span></div>'}
+  ${F.locked_count ? `<a class="card tap" href="#pro"><b>${F.locked_count} products aren't in this plan</b><span class="sub">Free plans cover your top ${FREE_LIMIT} sellers. Pro plans every product.</span></a>` : ''}
+  <div class="card" style="gap:8px"><b>Want a second opinion?</b><span class="sub">AI can look for things your sales history can't know about, like seasonal swings and how this year's events could change next week.</span><button class="btn secondary" data-ai="plan" ${S.busy.plan ? 'disabled' : ''}>${r ? 'Check again with AI' : 'Check with AI (optional)'}</button></div>
+  ${S.busy.plan ? spinner('AI is reading your forecasts and upcoming events…') : ''}${aiNote('plan')}${ai}`;
 }
 function makePlan() {
-  return runAI('plan', (sample) => sample.json(`${PLAN_RULES}\n\nThis week's data (JSON):\n${JSON.stringify(compactData())}\n\nReply with only JSON: {"headline": string, "summary": string, "next_week_outlook": string, "actions": [{"priority": "high"|"medium"|"low", "title": string, "detail": string, "sku": string}], "adjustments": [{"sku": string, "change_pct": number, "reason": string}], "risks": [string], "opportunities": [string]}. 3-8 actions, most important first.`, { modelTier: 'complex', cache: false }));
+  return runAI('plan', (sample) => sample.json(`${PLAN_RULES}\n\nThis week's data (JSON):\n${JSON.stringify(compactData())}\n\nReply with only JSON: {"summary": string, "actions": [{"priority": "high"|"medium"|"low", "title": string, "detail": string, "sku": string}], "adjustments": [{"sku": string, "change_pct": number, "reason": string}], "risks": [string]}`, { modelTier: 'complex', cache: false }));
 }
 
+/* ---------- trends: researched library (no AI) + optional live AI scan ---------- */
+const LIB = CFG.trend_library;
+const MOM = { exploding: ['🚀 Exploding', 'var(--critical)'], rising: ['▲ Rising', 'var(--tint)'], steady: ['→ Steady', 'var(--border)'] };
+const momPill = (m) => { const [l, c] = MOM[m] || [m, 'var(--border)']; return `<span class="pill" style="border-color:${c}">${esc(l)}</span>`; };
+const compPill = (c) => `<span class="pill" style="border-color:${c === 'low' ? 'var(--good)' : c === 'high' ? 'var(--serious)' : 'var(--warning)'}">${esc(c)} competition</span>`;
+function matchNiche(text) {
+  const t = String(text || '').toLowerCase(); let best = null, score = 0;
+  for (const n of LIB.niches) { const s = n.keywords.filter((k) => t.includes(k)).length; if (s > score) { best = n.key; score = s; } }
+  return best;
+}
+const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return 'source'; } };
+const haveIdea = (name) => { const n = String(name).toLowerCase(); return S.store.products.some((p) => p.name.toLowerCase() === n); };
+const priceFromHint = (h) => { const m = String(h || '').match(/(\d+(?:\.\d+)?)/); return m ? +m[1] : 0; };
 function trends() {
-  const r = S.reports.trends, err = S.reports.trends_error, u = S.store.user, saved = ideas();
-  const form = `<div class="card" style="gap:12px"><div class="field"><label class="label" for="tr-niche">Your niche (what you sell)</label><input class="input" id="tr-niche" value="${esc(u.niche)}" placeholder="e.g. pet accessories, home gym"></div><div class="field"><label class="label" for="tr-market">Where your customers are</label><input class="input" id="tr-market" value="${esc(u.market)}" placeholder="e.g. UK, US"></div><button class="btn" data-ai="trends" ${S.busy.trends ? 'disabled' : ''}>${r ? 'Scan again' : 'Find trending products'}</button><span class="muted">${PREVIEW_NOTE}</span></div>`;
-  const ideaList = saved.length ? `<h2>Your ideas (${saved.length})</h2><span class="muted">Products you saved. When you list one, tap Start selling and it moves into your stock.</span>${saved.map((p) => `<div class="card" style="gap:4px"><b>${esc(p.name)}</b><span class="muted">${p.sell_price ? 'Sell around ' + money(p.sell_price, 2) : 'Price not set'}${p.cost_price ? ' · cost around ' + money(p.cost_price, 2) : ''}</span><div class="row"><button class="btn small grow" data-startselling="${p.id}">Start selling</button><button class="btn secondary small" data-removeidea="${p.id}">Remove</button></div></div>`).join('')}` : '';
-  const mom = { exploding: '🚀 Exploding', rising: '▲ Rising', steady: '→ Steady' };
-  const results = r ? `<div class="card"><span class="muted">${esc(r.niche)} · ${ago(r.created)}</span><span>${esc(r.niche_summary)}</span></div><h2>Add these to your store</h2>${(r.trending_products || []).map((t, i) => { const have = saved.some((p) => p.name.toLowerCase() === String(t.name).toLowerCase()) || products().some((p) => p.name.toLowerCase() === String(t.name).toLowerCase()); return `<div class="card" style="gap:8px"><h2>${i + 1}. ${esc(t.name)}</h2><div class="row wrap-row"><span class="pill" style="border-color:var(--tint)">${mom[t.momentum] || esc(t.momentum)}</span><span class="pill" style="border-color:var(--border)">${esc(t.competition)} competition</span>${t.typical_retail_price ? `<span class="pill" style="border-color:var(--border)">${esc(t.typical_retail_price)}</span>` : ''}</div>${[['Why it’s trending', t.why_trending], ['How to sell it', t.how_to_sell_it], ['Fit with your store', t.fit_with_store], ['Supplier cost', t.typical_supplier_cost], ['Search suppliers for', t.supplier_search], ['Risk', t.risk]].filter(([, v]) => v).map(([k, v]) => `<div><div class="label">${k}</div><span>${esc(v)}</span></div>`).join('')}<div class="row"><button class="btn grow" data-addidea="${i}" ${have ? 'disabled' : ''}>${have ? 'Added to your ideas ✓' : 'Add to my store'}</button><a class="btn secondary" href="#product-check" data-checkidea="${esc(t.name)}">Check it</a></div></div>`; }).join('')}${(r.fading_trends || []).length ? `<h2>Cooling off</h2><div class="card"><ul class="bullets">${r.fading_trends.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}${(r.content_ideas || []).length ? `<h2>Video & ad hooks</h2><div class="card"><ul class="bullets">${r.content_ideas.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}` : '';
-  return `<div><h1>Trending now</h1><p class="sub">What's selling in your niche and what to add to your store. Tap “Add to my store” to save a product to your ideas list.</p></div>
-  ${form}${S.busy.trends ? spinner('Claude is looking at what’s selling in your niche…') : ''}${err ? `<div class="card" style="border-color:var(--critical)">${esc(err)}</div>` : ''}${ideaList}${S.busy.trends ? '' : results}`;
+  const u = S.store.user, saved = ideas(), matched = matchNiche(u.niche);
+  const key = S.trendNiche || matched || LIB.niches[0].key, niche = LIB.niches.find((n) => n.key === key);
+  const researched = new Date(LIB.researched_on + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const chips = `<div class="chips">${[...LIB.niches].sort((a, b) => (b.key === matched) - (a.key === matched)).map((n) => `<button class="chip" data-tniche="${n.key}" aria-pressed="${n.key === key}">${esc(n.name)}${n.key === matched ? ' · yours' : ''}</button>`).join('')}</div>`;
+  const items = niche.items.map((t, i) => {
+    const have = haveIdea(t.name);
+    return `<div class="card" style="gap:8px"><h2>${esc(t.name)}</h2><div class="row wrap-row">${momPill(t.momentum)}${compPill(t.competition)}${t.price_hint ? `<span class="pill" style="border-color:var(--border)">${esc(t.price_hint)}</span>` : ''}</div>
+    <span>${esc(t.why)}</span><div><div class="label">What the data shows</div><span class="sub">${esc(t.signal)}</span></div>
+    <div><div class="label">Search suppliers for</div><span class="mono" style="font-size:13px">${esc(t.supplier_search)}</span></div>
+    <a class="muted" href="${esc(t.source)}" target="_blank" rel="noopener noreferrer">Source: ${esc(hostOf(t.source))} ↗</a>
+    <div class="row"><button class="btn grow" data-addlib="${key}:${i}" ${have ? 'disabled' : ''}>${have ? 'In your store ✓' : 'Add to my store'}</button><a class="btn secondary" href="#product-check" data-checkidea="${esc(t.name)}" data-checkprice="${priceFromHint(t.price_hint) || ''}">Check profit</a></div></div>`;
+  }).join('');
+  const ideaList = saved.length ? `<h2>Your ideas (${saved.length})</h2><span class="muted">Products you saved. When you list one, tap Start selling and it moves into your stock.</span>${saved.map((p) => `<div class="card" style="gap:4px"><b>${esc(p.name)}</b><span class="muted">${p.sell_price ? 'Sell around ' + money(p.sell_price, 2) : 'Price not set'}${p.cost_price ? ' · cost around ' + money(p.cost_price, 2) : ''}</span><div class="row"><button class="btn small grow" data-startselling="${p.id}">Start selling</button><a class="btn secondary small" href="#product-check" data-checkidea="${esc(p.name)}" data-checkprice="${p.sell_price || ''}">Check</a><button class="btn secondary small" data-removeidea="${p.id}">Remove</button></div></div>`).join('')}` : '';
+  const H = LIB.holiday;
+  const holiday = `<div class="card" style="gap:8px"><h2>${esc(H.name)}</h2><span>${esc(H.summary)}</span><ul class="bullets">${H.points.map((p) => `<li>${esc(p.text)} <a class="muted" href="${esc(p.source)}" target="_blank" rel="noopener noreferrer">${esc(hostOf(p.source))} ↗</a></li>`).join('')}</ul></div>`;
+  const r = S.reports.trends;
+  const live = r && !S.busy.trends ? `<h2>AI scan: ${esc(r.niche)}</h2><span class="muted">${ago(r.created)}. ${PREVIEW_NOTE}</span><div class="card">${esc(r.niche_summary)}</div>${(r.trending_products || []).map((t, i) => { const have = haveIdea(t.name); return `<div class="card" style="gap:8px"><h2>${esc(t.name)}</h2><div class="row wrap-row">${momPill(t.momentum)}${compPill(t.competition)}${t.typical_retail_price ? `<span class="pill" style="border-color:var(--border)">${esc(t.typical_retail_price)}</span>` : ''}</div>${[['Why it’s trending', t.why_trending], ['How to sell it', t.how_to_sell_it], ['Supplier cost', t.typical_supplier_cost], ['Search suppliers for', t.supplier_search], ['Risk', t.risk]].filter(([, v]) => v).map(([k, v]) => `<div><div class="label">${k}</div><span>${esc(v)}</span></div>`).join('')}<div class="row"><button class="btn grow" data-addidea="${i}" ${have ? 'disabled' : ''}>${have ? 'In your store ✓' : 'Add to my store'}</button><a class="btn secondary" href="#product-check" data-checkidea="${esc(t.name)}" data-checkprice="${+t.est_retail_price || ''}">Check profit</a></div></div>`; }).join('')}` : '';
+  return `<div><h1>Trending now</h1><p class="sub">What's selling in each niche right now, from TikTok Shop and Amazon sales trackers and seller reports. Researched ${researched}. Tap “Add to my store” to save a product to your ideas.</p></div>
+  ${chips}<div class="card"><span>${esc(niche.summary)}</span><span class="muted">Sales figures come from third-party trackers, which estimate. Treat them as signals to check, not guarantees.</span></div>
+  ${items}${holiday}${ideaList}
+  <div class="card" style="gap:10px"><div class="row between wrap-row"><h2>Your exact niche</h2>${badge('Pro · AI', 'var(--example)')}</div><span class="sub">Don't see your niche? In the app, Pro runs a live web search for exactly what you sell. Here you can try it with AI if it's available.</span><div class="field"><label class="label" for="tr-niche">Your niche</label><input class="input" id="tr-niche" value="${esc(u.niche)}" placeholder="e.g. home gym, vintage watches"></div><button class="btn secondary" data-ai="trends" ${S.busy.trends ? 'disabled' : ''}>Scan my niche with AI (optional)</button></div>
+  ${S.busy.trends ? spinner('AI is looking at what’s selling in your niche…') : ''}${aiNote('trends')}${live}`;
 }
 function scanTrends() {
-  const niche = document.getElementById('tr-niche')?.value.trim() || S.store.user.niche, market = document.getElementById('tr-market')?.value.trim() || S.store.user.market;
+  const niche = document.getElementById('tr-niche')?.value.trim() || S.store.user.niche, market = S.store.user.market;
   if (!niche) { toast('Type your niche first.'); return; }
-  Object.assign(S.store.user, { niche, market }); saveLocal();
+  S.store.user.niche = niche; saveLocal();
   const catalogue = products().map((p) => p.name).slice(0, 60), saved = ideas().map((p) => p.name);
   return runAI('trends', async (sample) => Object.assign(await sample.json(`You are Trend Scout inside StockPilot, a tool for e-commerce and dropshipping sellers. Today is ${new Date().toISOString().slice(0, 10)}. Recommend products this seller should add, based on what is selling in their niche (TikTok Shop and Amazon best-seller patterns, seasonality, the shopping events coming up: ${JSON.stringify(E.upcomingEvents(NOW(), 8).map((e) => e.name + ' ' + e.date))}).
 Niche: ${niche}. Market: ${market || 'not specified'}.
 They already sell: ${catalogue.join('; ') || 'nothing yet'}. Already on their idea list: ${saved.join('; ') || 'none'}. Suggest different products.
-Be honest about saturation. Only give price ranges you are reasonably confident about, as estimates. You have no live web access: base this on your knowledge, and in "evidence" say what the pattern is based on.
-Reply with only JSON: {"niche_summary": string, "trending_products": [{"name": string, "why_trending": string, "evidence": string, "momentum": "exploding"|"rising"|"steady", "competition": "low"|"medium"|"high", "typical_retail_price": string, "typical_supplier_cost": string, "est_retail_price": number, "est_supplier_cost": number, "fit_with_store": string, "how_to_sell_it": string, "supplier_search": string, "risk": string}], "fading_trends": [string], "content_ideas": [string]}. 4-8 products, best first.`, { modelTier: 'complex', cache: false }), { niche }));
+Be honest about saturation. Only give price ranges you are reasonably confident about, as estimates. You have no live web access: base this on your knowledge.
+Reply with only JSON: {"niche_summary": string, "trending_products": [{"name": string, "why_trending": string, "momentum": "exploding"|"rising"|"steady", "competition": "low"|"medium"|"high", "typical_retail_price": string, "typical_supplier_cost": string, "est_retail_price": number, "est_supplier_cost": number, "how_to_sell_it": string, "supplier_search": string, "risk": string}]}. 4-8 products, best first.`, { modelTier: 'complex', cache: false }), { niche }));
 }
 
+/* ---------- profit calculator + product check (no AI) ---------- */
+const CALC_KEYS = ['price', 'cost', 'ship', 'ads'];
+function calcState() { return (S.calc = S.calc || { price: '', cost: '', ship: '', ads: '', channel: 'ebay' }); }
+function calcForm(idPrefix) {
+  const c = calcState(), t = E.feeTable(S.store.user.fees);
+  const f = (k, label, ph) => `<div class="field"><label class="label" for="${idPrefix}-${k}">${label}</label><input class="input" id="${idPrefix}-${k}" data-calc="${k}" inputmode="decimal" placeholder="${ph}" value="${esc(c[k])}"></div>`;
+  return `<div class="tiles">${f('price', 'You sell it for', 'e.g. 24.99')}${f('cost', 'You pay per item', 'e.g. 6.50')}${f('ship', 'Shipping you pay', 'e.g. 3.20')}${f('ads', 'Ad cost per sale', 'e.g. 4 (or 0)')}</div>
+  <div class="field"><label class="label" for="${idPrefix}-ch">Where you sell it</label><select class="input" id="${idPrefix}-ch" data-calcch="1">${Object.entries(t).map(([k, v]) => `<option value="${k}" ${c.channel === k ? 'selected' : ''}>${esc(v.label)} (${v.pct}%${v.fixed ? ' + ' + money(v.fixed, 2) : ''})</option>`).join('')}</select></div>`;
+}
+function calcNumbers() {
+  const c = calcState(), t = E.feeTable(S.store.user.fees)[c.channel] || { pct: 0, fixed: 0 }, n = (k) => Math.max(0, parseFloat(String(c[k]).replace(',', '.')) || 0);
+  return { price: n('price'), cost: n('cost'), ship: n('ship'), ads: n('ads'), fee: t, r: E.profitCalc(n('price'), n('cost'), n('ship'), t.pct, t.fixed, n('ads')) };
+}
+function calcResult() {
+  const { price, cost, ads, r } = calcNumbers();
+  if (!price) return '<div class="card"><span class="sub">Type a selling price to see your profit.</span></div>';
+  const color = r.profit < 0 ? 'var(--critical)' : r.margin_pct < 15 ? 'var(--warning)' : 'var(--good)';
+  return `<div class="card" style="border-left:4px solid ${color};gap:4px"><span class="label">Profit per sale</span><span class="hero" style="color:${r.profit < 0 ? 'var(--negative)' : 'var(--text)'}">${money(r.profit, 2)}</span><span class="sub">${r.margin_pct}% of the price · platform fees ${money(r.fees, 2)}${!cost ? ' · add what you pay per item for a real answer' : ''}</span></div>
+  <div class="tiles">${tile('Most you can pay for ads per sale', money(r.max_ad_cost_per_sale, 2))}${tile('Break-even ROAS', r.break_even_roas == null ? 'never' : r.break_even_roas.toFixed(2) + '×')}${tile('Price for a 30% margin', r.price_for_30pct_margin == null ? '–' : money(r.price_for_30pct_margin, 2))}${tile('Profit on 100 sales', money(r.profit * 100, 0))}</div>
+  <span class="muted">${r.break_even_roas == null ? 'At this price you lose money before any ads.' : `Break-even ROAS ${r.break_even_roas.toFixed(2)}× means every ${money(1, 2)} you spend on ads must bring ${money(r.break_even_roas, 2)} in sales, or that sale loses money.`}${ads ? '' : ' Running ads? Put your average ad cost per sale above.'}</span>`;
+}
+function calculator() {
+  setTop('<a href="#ai">‹ Tools</a><span>Profit & ads calculator</span>');
+  const ps = products().filter((p) => p.sell_price > 0).slice(0, 12);
+  return `<span class="sub">What one sale really leaves you after the product, shipping and the platform's cut, and how much advertising it can carry.</span>
+  ${ps.length ? `<div style="display:grid;gap:4px"><span class="label">Fill from one of your products</span><div class="chips">${ps.map((p) => `<button class="chip" data-calcfrom="${p.id}">${esc(p.name)}</button>`).join('')}</div></div>` : ''}
+  <div class="card" style="gap:12px">${calcForm('calc')}</div><div id="calc-out" style="display:grid;gap:16px">${calcResult()}</div>`;
+}
+
+const RED_FLAGS = [
+  [/batter|lithium|power ?bank|rechargeable/, 'Batteries: couriers and marketplaces have extra shipping rules for lithium batteries, and suppliers should provide test reports (UN38.3).'],
+  [/serum|cream|skincare|skin care|cosmetic|lotion|makeup|lipstick|shampoo|collagen|face mask|overnight mask|balm/, 'Cosmetics: ingredient labelling and safety rules apply (the FDA in the US, a responsible person in the UK and EU). Ask the supplier for the paperwork.'],
+  [/baby|infant|toddler|kid|child|toy/, "Children's products need safety testing and certificates (for example CPC in the US, UKCA or CE in the UK and EU). Marketplaces often ask for them."],
+  [/supplement|vitamin|gumm|probiotic|magnesium|collagen powder/, 'Supplements: strict rules on health claims, and Amazon and TikTok Shop require approval for the category.'],
+  [/knife|blade|sword|pepper spray|taser/, 'Age-restricted or banned on some platforms and in some countries.'],
+  [/magnet/, 'Small strong magnets are restricted in toys and products for children.'],
+  [/aerosol|perfume|nail polish|liquid|flammable/, 'Liquids, aerosols and flammable items have shipping limits, especially by air.'],
+  [/charger|plug|electric|heater|heated|led |\bled\b|lamp|mains/, 'Electrical items need the right plug and safety marks for each country (UL/FCC in the US, UKCA or CE in the UK and EU).'],
+  [/\bcbd\b|hemp|vape|nicotine/, 'Banned or tightly restricted on most marketplaces and ad platforms.'],
+  [/nike|adidas|apple|disney|stanley|lego|pokemon|marvel|gucci|airpods/, "Trademark risk: don't use brand names in your title or images unless you are an authorised seller."],
+  [/glass|ceramic|mirror|fragile/, 'Fragile: budget for breakages and returns, and pack well.'],
+  [/dress|shirt|shoe|jeans|legging|clothing|apparel|ring size/, 'Clothing and shoes have higher return rates because of sizing. Add a clear size chart.'],
+  [/food|snack|treat|tea|coffee|sauce/, 'Food and pet food need labelling and sometimes registration where you sell. Check expiry dates with the supplier.'],
+];
+function libraryMatches(idea) {
+  const words = String(idea).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+  const out = [];
+  for (const n of LIB.niches) for (const t of n.items) {
+    const hay = (t.name + ' ' + t.supplier_search).toLowerCase(), hits = words.filter((w) => hay.includes(w.replace(/s$/, ''))).length;
+    if (hits) out.push({ t, n, hits });
+  }
+  return out.sort((a, b) => b.hits - a.hits).slice(0, 2);
+}
 function productCheck() {
-  setTop('<a href="#ai">‹ AI</a><span>Product Check</span>');
-  const r = S.reports.check, err = S.reports.check_error, V = { go: ['✓ Go for it', 'var(--good)'], test_small: ['◐ Test it small first', 'var(--warning)'], skip: ['✕ Skip it', 'var(--critical)'] };
-  const bar = (label, v, inv) => { v = Math.max(1, Math.min(10, Math.round(+v || 1))); return `<div style="display:grid;gap:4px"><div class="row between"><span class="sub">${label}${inv ? ' (lower is better)' : ''}</span><b class="num">${v}/10</b></div><div class="meter"><i style="width:${v * 10}%"></i></div></div>`; };
-  return `<div class="card" style="gap:12px"><div class="field"><label class="label" for="pc-idea">Product idea</label><input class="input" id="pc-idea" value="${esc(S.checkIdea || '')}" placeholder="e.g. heated pet bed with timer"></div><div class="tiles"><div class="field"><label class="label" for="pc-cost">Your unit cost (optional)</label><input class="input" id="pc-cost" inputmode="decimal"></div><div class="field"><label class="label" for="pc-price">Planned price (optional)</label><input class="input" id="pc-price" inputmode="decimal"></div></div><button class="btn" data-ai="check" ${S.busy.check ? 'disabled' : ''}>Should I sell this?</button><span class="muted">${PREVIEW_NOTE}</span></div>
-  ${S.busy.check ? spinner('Claude is weighing demand, competition, margins and red flags…') : ''}${err ? `<div class="card" style="border-color:var(--critical)">${esc(err)}</div>` : ''}
-  ${r && !S.busy.check ? `<div class="card" style="border-left:4px solid ${(V[r.verdict] || V.test_small)[1]}"><span class="muted">${esc(r.idea)}</span><h2>${(V[r.verdict] || V.test_small)[0]}</h2><span>${esc(r.one_line)}</span></div><div class="card" style="gap:12px">${bar('Demand', r.demand_score)}${bar('Competition', r.competition_score, true)}${bar('Margin', r.margin_score)}</div><div class="card" style="gap:10px">${[['Estimated margin', r.estimated_margin], ['Typical retail price', r.typical_retail_price], ['Seasonality', r.seasonality], ['Target customer', r.target_customer], ['Best channels', (r.best_channels || []).join(', ')]].map(([k, v]) => `<div><div class="label">${k}</div><span>${esc(v)}</span></div>`).join('')}</div><h2>Cheap test plan</h2><div class="card">${esc(r.first_test_plan)}</div>${(r.angles || []).length ? `<h2>Angles to beat competitors</h2><div class="card"><ul class="bullets">${r.angles.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}${(r.red_flags || []).length ? `<h2>Red flags</h2><div class="card"><ul class="bullets">${r.red_flags.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}<button class="btn secondary" data-addcheck="1">Add to my ideas</button>` : ''}`;
+  setTop('<a href="#ai">‹ Tools</a><span>Product Check</span>');
+  const idea = S.checkIdea || '', ran = S.checkRan && idea;
+  let result = '';
+  if (ran) {
+    const { price, cost, r } = calcNumbers(), text = idea.toLowerCase();
+    const flags = RED_FLAGS.filter(([re]) => re.test(text)).map(([, t]) => t), lib = libraryMatches(idea);
+    let verdict, why, color;
+    if (!price || !cost) { verdict = 'Add your numbers'; why = 'Type the price and what you pay per item to get a verdict on the margin.'; color = 'var(--border)'; }
+    else if (r.margin_pct >= 25 && flags.length <= 1) { verdict = '✓ The numbers work'; why = `You keep ${money(r.profit, 2)} (${r.margin_pct}%) per sale after fees${calcState().ads ? ' and ads' : ''}.`; color = 'var(--good)'; }
+    else if (r.margin_pct >= 10) { verdict = '◐ Test it small first'; why = `${r.margin_pct}% margin ${r.margin_pct < 25 ? 'is thin once returns and ads come in' : 'works, but check the red flags'}. Order a small batch or list it as dropship first.`; color = 'var(--warning)'; }
+    else { verdict = '✕ Skip it at this price'; why = r.profit < 0 ? `Every sale loses ${money(-r.profit, 2)}.` : `Only ${r.margin_pct}% margin: one return wipes out several sales.`; color = 'var(--critical)'; }
+    result = `<div class="card" style="border-left:4px solid ${color};gap:4px"><span class="muted">${esc(idea)}</span><h2>${verdict}</h2><span>${esc(why)}</span>${price && cost && r.price_for_30pct_margin ? `<span class="sub">For a 30% margin, sell at ${money(r.price_for_30pct_margin, 2)}. Most you can spend on ads per sale: ${money(r.max_ad_cost_per_sale, 2)}.</span>` : ''}</div>
+    <h2>Is it trending?</h2>${lib.length ? lib.map(({ t, n }) => `<div class="card" style="gap:6px"><b>${esc(t.name)}</b><span class="muted">${esc(n.name)}</span><div class="row wrap-row">${momPill(t.momentum)}${compPill(t.competition)}</div><span class="sub">${esc(t.signal)}</span><a class="muted" href="${esc(t.source)}" target="_blank" rel="noopener noreferrer">Source: ${esc(hostOf(t.source))} ↗</a></div>`).join('') : '<div class="card"><span class="sub">Not in our trends library. That can be good (less competition) but means less proof of demand. Look it up on TikTok Shop and Amazon best-sellers before buying stock.</span></div>'}
+    <h2>Red flags to check</h2><div class="card">${flags.length ? `<ul class="bullets">${flags.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : '<span class="sub">No common rule or shipping problems spotted from the name. Still ask the supplier for photos of the real product and its packaging.</span>'}</div>
+    <h2>Cheap test plan</h2><div class="card"><ol class="steps"><li><span>Order 1–3 samples and check quality and real delivery time.</span></li><li><span>List it (or offer it as dropship) with your own photos or a short video.</span></li><li><span>Spend at most ${money(Math.max(20, (r.max_ad_cost_per_sale || 0) * 10), 0)} on ads over a week.</span></li><li><span>Keep it if it sells at a profit; cut it if not. No big stock order until then.</span></li></ol></div>
+    <button class="btn secondary" data-addcheck="1">Add to my ideas</button>`;
+    const a = S.reports.check;
+    result += `<div class="card" style="gap:8px"><b>Deeper check (optional)</b><span class="sub">AI can weigh demand, saturation and customer complaints for this exact product.</span><button class="btn secondary" data-ai="check" ${S.busy.check ? 'disabled' : ''}>Check with AI</button></div>${S.busy.check ? spinner('AI is weighing demand, competition and red flags…') : ''}${aiNote('check')}`;
+    if (a && a.idea === idea && !S.busy.check) result += `<div class="card" style="gap:6px"><span class="label">AI view · ${esc(String(a.verdict || '').replace('_', ' '))}</span><b>${esc(a.one_line)}</b>${[['Demand', a.demand_note], ['Competition', a.competition_note], ['Seasonality', a.seasonality]].filter(([, v]) => v).map(([k, v]) => `<div><div class="label">${k}</div><span class="sub">${esc(v)}</span></div>`).join('')}${(a.angles || []).length ? `<div class="label">Angles to beat competitors</div><ul class="bullets">${a.angles.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}<span class="muted">${PREVIEW_NOTE}</span></div>`;
+  }
+  return `<span class="sub">Thinking of selling something new? Check the margin, whether it's trending and what could go wrong, before you buy stock.</span>
+  <div class="card" style="gap:12px"><div class="field"><label class="label" for="pc-idea">Product idea</label><input class="input" id="pc-idea" value="${esc(idea)}" placeholder="e.g. heated pet bed with timer"></div>${calcForm('pc')}<button class="btn" data-runcheck="1">Check it</button></div>
+  ${result}`;
 }
 function runCheck() {
-  const idea = document.getElementById('pc-idea').value.trim(), costV = document.getElementById('pc-cost').value, priceV = document.getElementById('pc-price').value;
-  if (idea.length < 3) { toast('Describe the product first.'); return; }
-  S.checkIdea = idea;
-  return runAI('check', async (sample) => Object.assign(await sample.json(`You are Product Check inside StockPilot, for e-commerce and dropshipping sellers. The seller is considering adding: "${idea}". Their niche: ${S.store.user.niche || 'not set'}; market: ${S.store.user.market || 'not set'}. Their numbers: ${costV ? 'landed cost ' + costV + ' ' + cur() : 'no cost yet'}, ${priceV ? 'planned price ' + priceV + ' ' + cur() : 'no price yet'}.
-Judge demand and momentum, saturation, typical prices and supplier costs, shipping or quality complaints, seasonality, and platform or legal restrictions (batteries, cosmetics, kids' products). Work out the margin from their numbers when given, after typical ad spend and platform fees. Be direct; a "skip" with a good reason saves money. You have no live web access: say when something needs checking.
-Reply with only JSON: {"verdict": "go"|"test_small"|"skip", "one_line": string, "demand_score": 1-10, "competition_score": 1-10 (10 = very saturated), "margin_score": 1-10, "estimated_margin": string, "typical_retail_price": string, "seasonality": string, "best_channels": [string], "target_customer": string, "angles": [string], "red_flags": [string], "first_test_plan": string}`, { modelTier: 'complex', cache: false }), { idea, price: +priceV || 0, cost: +costV || 0 }));
+  return runAI('check', async (sample) => {
+    const { price, cost } = calcNumbers();
+    return Object.assign(await sample.json(`You are Product Check inside StockPilot, for e-commerce and dropshipping sellers. The seller is considering adding: "${S.checkIdea}". Their niche: ${S.store.user.niche || 'not set'}; market: ${S.store.user.market || 'not set'}. Price ${price || 'not set'}, cost ${cost || 'not set'} ${cur()}.
+Judge demand and momentum, saturation, common customer complaints and seasonality. Be direct. You have no live web access: say when something needs checking.
+Reply with only JSON: {"verdict": "go"|"test_small"|"skip", "one_line": string, "demand_note": string, "competition_note": string, "seasonality": string, "angles": [string]}`, { modelTier: 'complex', cache: false }), { idea: S.checkIdea });
+  });
 }
 
+/* ---------- Ask: instant answers from the data (no AI), AI optional for anything else ---------- */
+const STARTERS = ['What should I reorder this week?', 'Which product made the most profit this month?', 'What is not selling and how much cash is tied up in it?', 'How did this week compare to last week?', 'What will I sell next week?', 'Which products sell together?'];
+function answerLocally(q) {
+  const t = q.toLowerCase(), now = NOW(), F = forecastsData(), d = E.dashboard(S.store, now), ps = products(), st = d.stats;
+  if (!ps.length) return 'Import your sales first, then I can answer from your data.';
+  const items = F.items.filter((i) => !i.locked), list = (rows) => rows.map((x) => '• ' + x).join('\n');
+  if (/reorder|restock|order more|run(ning)? out|running low|buy more/.test(t)) {
+    const need = items.filter((i) => ['out_of_stock', 'reorder_now', 'low'].includes(i.stock_plan.status));
+    if (!need.length) return items.some((i) => i.stock_plan.status === 'stock_unknown') ? 'Nothing I can see needs reordering, but some products have no stock count yet. Add them on the Stock counts screen so I can check those too.' : 'Nothing needs reordering this week. Stock covers expected sales on every forecast product.';
+    return `${need.length} product${need.length > 1 ? 's need' : ' needs'} ordering:\n` + list(need.slice(0, 6).map((i) => `${i.product.name}: order ${i.stock_plan.reorder_qty} units${i.stock_plan.order_by ? ' ' + orderWhen(i.stock_plan.order_by) : ''}. ${i.stock_plan.reason}`)) + (F.store.restock_budget.now > 0 ? `\nThe orders to place now cost about ${money(F.store.restock_budget.now, 0)}.` : '');
+  }
+  if (/not selling|dead|tied up|slow|stuck|clear/.test(t)) {
+    const dead = d.dead_stock;
+    if (!dead.length) return 'Everything with stock has sold in the last 30 days.';
+    const cash = dead.reduce((x, p) => x + p.stock_qty * p.cost_price, 0);
+    return `${dead.length} product${dead.length > 1 ? 's haven’t' : ' hasn’t'} sold in 30 days, with about ${money(cash, 0)} tied up at cost:\n` + list(dead.slice(0, 5).map((p) => `${p.name}: ${p.stock_qty} in stock, ${money(p.stock_qty * p.cost_price, 0)}`)) + '\nTry a bundle with a best seller or a 15–20% discount.';
+  }
+  if (/together|bundle|pair/.test(t)) {
+    const b = insightsData().bundles;
+    return b.pairs.length ? 'Customers often buy these together:\n' + list(b.pairs.slice(0, 4).map((p) => `${p.a.name} + ${p.b.name}: ${p.orders_together} orders, ${p.lift}× more often than chance`)) + '\nOffer them as a bundle, or show one on the other’s page.' : b.note;
+  }
+  if (/compar|last week|this week|how did|how am i doing|how's|week/.test(t) && !/next/.test(t)) {
+    const k = d.kpis['7d'], c = k.change, ch = (v) => (v == null ? '' : ` (${v >= 0 ? 'up' : 'down'} ${Math.abs(Math.round(v * 100))}%)`);
+    return `Last 7 days: ${money(k.revenue, 0)} revenue${ch(c.revenue)}, ${money(k.profit, 0)} profit after fees${ch(c.profit)}, ${num(k.orders)} orders${ch(c.orders)} and ${num(k.units)} items sold${ch(c.units)}, compared with the 7 days before.`;
+  }
+  if (/next week|forecast|expect|predict|will i sell/.test(t)) {
+    const s = F.store, top = [...items].sort((a, b) => b.next_week_revenue - a.next_week_revenue).slice(0, 3);
+    return `Next week I expect about ${num(s.next_weeks_units[0])} items, ${money(s.next_weeks_revenue[0], 0)} revenue and ${money(s.next_weeks_profit[0], 0)} profit.\n` + list(top.map((i) => `${i.product.name}: about ${num(i.forecast.next_week)} units (likely ${num(i.forecast.lower[0])}–${num(i.forecast.upper[0])})`));
+  }
+  if (/fee|commission/.test(t)) return `Selling fees in the last 30 days: ${money(d.kpis['30d'].fees, 0)}, already taken off your profit. Change the rates under Account → Selling fees.`;
+  if (/profit|best|top|most|money|earn|margin|seller/.test(t)) {
+    const top = [...ps].sort((a, b) => st[b.id].profit_30d - st[a.id].profit_30d), f = insightsData().focus, losing = f.items.filter((r) => r.group === 'losing');
+    return `${top[0].name} made the most profit in the last 30 days: ${money(st[top[0].id].profit_30d, 0)} after fees.\n` + list(top.slice(1, 4).map((p) => `${p.name}: ${money(st[p.id].profit_30d, 0)}`)) + `\n${f.summary}` + (losing.length ? ` ${losing.length} product${losing.length > 1 ? 's are' : ' is'} losing money: ${losing.slice(0, 3).map((r) => r.name).join(', ')}.` : '');
+  }
+  const words = t.split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+  const hit = ps.map((p) => ({ p, n: words.filter((w) => (p.name + ' ' + p.sku).toLowerCase().includes(w)).length })).filter((x) => x.n).sort((a, b) => b.n - a.n)[0];
+  if (hit) {
+    const p = hit.p, x = st[p.id], it = items.find((i) => i.product.id === p.id);
+    return `${p.name}: ${p.stock_known ? p.stock_qty + ' in stock' : 'no stock count yet'}, ${x.units_30d} sold in 30 days, ${money(x.profit_30d, 0)} profit after fees.` + (it ? `\n• Next week: about ${num(it.forecast.next_week)} units.\n• ${it.stock_plan.reason}` : '');
+  }
+  return null;
+}
 function ask() {
-  setTop('<a href="#ai">‹ AI</a><span>Ask StockPilot</span>');
-  const starters = ['What should I reorder this week?', 'Which product made the most profit this month?', 'What is not selling and how much cash is tied up in it?', 'How did this week compare to last week?'];
-  return `<span class="sub">Ask anything about your store. Claude looks up the answer in your sales, stock and forecasts.</span>
+  setTop('<a href="#ai">‹ Tools</a><span>Ask StockPilot</span>');
+  return `<div class="row between wrap-row"><span class="sub">Ask about your store. Answers come straight from your sales, stock and forecasts.</span>${NO_AI}</div>
   <div style="display:flex;flex-direction:column;gap:10px">${S.ask.map((t) => `<div class="bubble ${t.role === 'user' ? 'me' : ''}">${esc(t.content)}</div>`).join('')}</div>
-  ${S.busy.ask ? spinner('Looking it up…') : ''}${S.reports.ask_error ? `<div class="card" style="border-color:var(--critical)">${esc(S.reports.ask_error)}</div>` : ''}
-  <div style="display:grid;gap:8px">${starters.map((s) => `<button class="btn secondary" data-askq="${esc(s)}" ${S.busy.ask ? 'disabled' : ''}>${esc(s)}</button>`).join('')}</div>
+  ${S.busy.ask ? spinner('AI is looking it up…') : ''}${aiNote('ask')}
+  ${S.askPending ? `<div class="card" style="gap:8px"><span class="sub">That one needs AI. Want to ask it?</span><button class="btn secondary" data-askai="1">Ask with AI (optional)</button></div>` : ''}
+  <div class="chips" style="flex-wrap:wrap">${STARTERS.map((s) => `<button class="chip" data-askq="${esc(s)}" ${S.busy.ask ? 'disabled' : ''}>${esc(s)}</button>`).join('')}</div>
   <form class="row" id="ask-form"><input class="input grow" id="ask-q" placeholder="Ask about your store…" aria-label="Your question"><button class="btn" type="submit" ${S.busy.ask ? 'disabled' : ''}>Send</button></form>`;
 }
-async function sendAsk(q) {
+function sendAsk(q) {
   q = q.trim(); if (!q || S.busy.ask) return;
-  const sample = await getSample();
-  if (!sample) { S.reports.ask_error = 'The AI features need this page to be open inside Claude.'; render(); return; }
-  S.ask.push({ role: 'user', content: q }); S.busy.ask = true; S.reports.ask_error = ''; render();
-  const rules = `You are StockPilot's assistant for an e-commerce / dropshipping seller. Store: ${S.store.user.store_name}. Currency: ${cur()}. Today: ${new Date().toISOString().slice(0, 10)}. Answer from the seller's data${'{tools}'}. Quote the numbers. Lead with the answer, then up to 3 bullet points starting with "• ". Plain text, no markdown headings or bold.`;
-  const turns = S.ask.slice(-10);
+  S.ask.push({ role: 'user', content: q }); S.reports.ask_error = ''; S.askPending = null;
+  const a = answerLocally(q);
+  if (a) S.ask.push({ role: 'assistant', content: a });
+  else { S.ask.push({ role: 'assistant', content: 'I can answer questions about reordering, profit, best sellers, slow stock, next week’s forecast, fees, products bought together, or any product by name. Try one of the buttons below.' }); S.askPending = q; }
+  render();
+}
+async function askAI() {
+  const q = S.askPending; if (!q || S.busy.ask) return;
+  S.busy.ask = true; S.reports.ask_error = ''; render();
   try {
-    const limits = await sample.limits().catch(() => null);
-    let text;
-    if (limits?.tools) {
-      const tools = [
-        { name: 'get_dashboard', description: 'Store KPIs for the last 7 and 30 days (revenue, profit after fees, units, orders, % change), inventory counts.', execute: () => { const d = E.dashboard(S.store, NOW()); return { kpis: d.kpis, inventory: d.inventory, channels: d.channels }; } },
-        { name: 'get_forecasts', description: 'Per product: next weeks forecast (units), likely range, trend, accuracy, stock status, run-out date, suggested reorder quantity, profit last 30 days. Optional status filter.', inputSchema: { type: 'object', properties: { status: { type: 'string', description: 'any, out_of_stock, reorder_now, low, healthy, overstock, dead_stock, stock_unknown' } } }, execute: (inp) => compactData().products.filter((p) => !inp?.status || inp.status === 'any' || p.stock_status === inp.status).slice(0, 40) },
-        { name: 'search_products', description: 'Find products by name or SKU: stock, price, cost, units and revenue in the last 30 days, profit after fees.', inputSchema: { type: 'object', properties: { query: { type: 'string' } } }, execute: (inp) => { const q2 = String(inp?.query || '').toLowerCase(), ps = products(), st = E.productStats(S.store, ps, NOW()); return ps.filter((p) => !q2 || (p.name + ' ' + p.sku).toLowerCase().includes(q2)).slice(0, 30).map((p) => ({ sku: p.sku, name: p.name, stock: p.stock_known ? p.stock_qty : 'unknown', price: p.sell_price, cost: p.cost_price, units_30d: st[p.id].units_30d, revenue_30d: Math.round(st[p.id].revenue_30d), profit_30d: Math.round(st[p.id].profit_30d), fees_30d: Math.round(st[p.id].fees_30d) })); } },
-      ];
-      ({ text } = await sample([{ role: 'user', content: rules.replace('{tools}', ' using the tools') }, ...turns], { tools, modelTier: 'default' }));
-    } else {
-      ({ text } = await sample([{ role: 'user', content: rules.replace('{tools}', '') + '\n\nData (JSON): ' + JSON.stringify(compactData()) }, ...turns], { modelTier: 'default', cache: false }));
-    }
-    S.ask.push({ role: 'assistant', content: text.trim() });
-  } catch (e) { S.ask.pop(); S.reports.ask_error = aiErrorText(e); }
+    const sample = await getSample();
+    if (!sample) throw { code: 'capability_disabled' };
+    const rules = `You are StockPilot's assistant for an e-commerce / dropshipping seller. Store: ${S.store.user.store_name}. Currency: ${cur()}. Today: ${new Date().toISOString().slice(0, 10)}. Answer from the seller's data below. Quote the numbers. Lead with the answer, then up to 3 bullet points starting with "• ". Plain text, no markdown.`;
+    const { text } = await sample([{ role: 'user', content: rules + '\n\nData (JSON): ' + JSON.stringify(compactData()) + '\n\nQuestion: ' + q }], { modelTier: 'default', cache: false });
+    S.ask.push({ role: 'assistant', content: text.trim() }); S.askPending = null;
+  } catch (e) { S.reports.ask_error = aiErrorText(e); }
   finally { S.busy.ask = false; render(); }
 }
 
+/* ---------- Listing writer: instant draft (no AI), AI polish optional ---------- */
+const TITLE_LIMIT = { eBay: [80, "eBay's limit"], Etsy: [140, "Etsy's limit"], Amazon: [200, "Amazon's usual limit"] };
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+function draftListing(name, details, platform) {
+  const parts = details.split(/\n|;|,(?![^(]*\))/).map((s) => s.trim().replace(/\.$/, '')).filter(Boolean);
+  const limit = (TITLE_LIMIT[platform] || [70])[0];
+  let title = name;
+  for (const p of parts.slice(0, 4)) { const next = `${title}${title === name ? ' – ' : ', '}${cap(p)}`; if (next.length <= limit) title = next; }
+  const stop = new Set(['with', 'and', 'for', 'the', 'from', 'your', 'this', 'that', 'into']);
+  const words = [...new Set((name + ' ' + parts.join(' ')).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !stop.has(w) && !/^\d+$/.test(w)))];
+  const nameWords = name.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !stop.has(w));
+  const keywords = [name.toLowerCase(), ...parts.slice(0, 3).map((p) => `${nameWords.slice(-1)[0] || ''} ${p.toLowerCase()}`.trim()), ...words.slice(0, 10)].filter((v, i, a) => a.indexOf(v) === i).slice(0, 12);
+  const bullets = parts.length ? parts.slice(0, 5).map(cap) : ['[Main benefit: what problem it solves]', '[Material and build quality]', '[Size and what’s in the box]', '[Who it’s for or a gift idea]', '[Care, warranty or returns]'];
+  const description = `${name}${parts.length ? ' – ' + parts.slice(0, 2).join(', ') : ''}.\n\n${parts.length > 2 ? parts.slice(2).map((p) => cap(p) + '.').join(' ') + '\n\n' : ''}[Add one or two sentences on who it's for and why they'll love it.]\n\n${platform === 'TikTok Shop' ? 'Tap to shop before it sells out.' : 'Order today, and message us with any questions.'}`;
+  return { title, title_limit: TITLE_LIMIT[platform] || null, short_description: parts.length ? `${name}: ${parts.slice(0, 2).join(', ')}.` : `${name}. [Add the main benefit here.]`, bullet_points: bullets, description, seo_keywords: keywords, hashtags: [...nameWords, ...words].filter((v, i, a) => a.indexOf(v) === i).slice(0, 8).map((w) => '#' + w), missing_info: parts.length < 3 ? ['Materials and size', 'What’s in the box', 'Who it’s for'] : [], made_by: 'draft' };
+}
 function listing() {
-  setTop('<a href="#ai">‹ AI</a><span>Listing Writer</span>');
-  const r = S.reports.listing, err = S.reports.listing_error, p = S.listingFor ? byId(S.listingFor) : null;
-  return `<div class="card" style="gap:12px"><div class="field"><label class="label" for="lw-name">Product</label><input class="input" id="lw-name" value="${esc(p ? p.name : S.listingName || '')}" placeholder="e.g. No-pull dog harness"></div><div class="field"><label class="label" for="lw-details">Details (materials, sizes, what's in the box, who it's for)</label><textarea class="input" id="lw-details" rows="3"></textarea></div><div class="field"><label class="label" for="lw-platform">Platform</label><select class="input" id="lw-platform">${['Shopify', 'TikTok Shop', 'Amazon', 'eBay', 'Etsy', 'WooCommerce'].map((x) => `<option>${x}</option>`).join('')}</select></div><button class="btn" data-ai="listing" ${S.busy.listing ? 'disabled' : ''}>Write listing</button></div>
-  ${S.busy.listing ? spinner('Writing your listing…') : ''}${err ? `<div class="card" style="border-color:var(--critical)">${esc(err)}</div>` : ''}
-  ${r && !S.busy.listing ? `<div class="card"><div class="label">Title</div><b>${esc(r.title)}</b><div class="label">Short description</div><span>${esc(r.short_description)}</span></div><h2>Bullet points</h2><div class="card"><ul class="bullets">${(r.bullet_points || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div><h2>Description</h2><div class="card" style="white-space:pre-line">${esc(r.description)}</div><div class="card"><div class="label">SEO keywords</div><span>${esc((r.seo_keywords || []).join(', '))}</span><div class="label">Hashtags</div><span>${esc((r.hashtags || []).join(' '))}</span></div>${(r.missing_info || []).length ? `<h2>Add these to make it stronger</h2><div class="card"><ul class="bullets">${r.missing_info.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}<button class="btn" data-copylisting="1">Copy all</button>` : ''}`;
+  setTop('<a href="#ai">‹ Tools</a><span>Listing Writer</span>');
+  const r = S.reports.listing, p = S.listingFor ? byId(S.listingFor) : null, platform = S.listingPlatform || 'Shopify';
+  return `<div class="row between wrap-row"><span class="sub">Get a ready-to-edit listing instantly. AI polish is optional.</span>${NO_AI}</div>
+  <div class="card" style="gap:12px"><div class="field"><label class="label" for="lw-name">Product</label><input class="input" id="lw-name" value="${esc(p ? p.name : S.listingName || '')}" placeholder="e.g. No-pull dog harness"></div><div class="field"><label class="label" for="lw-details">Details, one per line (materials, sizes, what's in the box, who it's for)</label><textarea class="input" id="lw-details" rows="4" placeholder="Padded breathable mesh&#10;Sizes XS to XL&#10;Reflective strips for night walks">${esc(S.listingDetails || '')}</textarea></div><div class="field"><label class="label" for="lw-platform">Platform</label><select class="input" id="lw-platform">${['Shopify', 'TikTok Shop', 'Amazon', 'eBay', 'Etsy', 'WooCommerce'].map((x) => `<option ${x === platform ? 'selected' : ''}>${x}</option>`).join('')}</select></div><button class="btn" data-draftlisting="1">Write listing</button></div>
+  ${S.busy.listing ? spinner('AI is polishing your listing…') : ''}${aiNote('listing')}
+  ${r && !S.busy.listing ? `<div class="card"><div class="row between"><span class="label">Title</span><span class="muted">${r.title.length}${r.title_limit ? ' / ' + r.title_limit[0] + ' (' + esc(r.title_limit[1]) + ')' : ' characters'}</span></div><b>${esc(r.title)}</b><div class="label">Short description</div><span>${esc(r.short_description)}</span></div><h2>Bullet points</h2><div class="card"><ul class="bullets">${(r.bullet_points || []).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div><h2>Description</h2><div class="card" style="white-space:pre-line">${esc(r.description)}</div><div class="card"><div class="label">Search keywords</div><span>${esc((r.seo_keywords || []).join(', '))}</span><div class="label">Hashtags</div><span>${esc((r.hashtags || []).join(' '))}</span></div>${(r.missing_info || []).length ? `<h2>Add these to make it stronger</h2><div class="card"><ul class="bullets">${r.missing_info.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}<button class="btn" data-copylisting="1">Copy all</button>${r.made_by === 'draft' ? `<button class="btn secondary" data-ai="listing" ${S.busy.listing ? 'disabled' : ''}>Polish with AI (optional)</button>` : `<span class="muted">Polished by AI.</span>`}` : ''}`;
+}
+function readListingForm() {
+  S.listingName = document.getElementById('lw-name').value.trim(); S.listingDetails = document.getElementById('lw-details').value.trim(); S.listingPlatform = document.getElementById('lw-platform').value;
+  return S.listingName;
 }
 function runListing() {
-  const name = document.getElementById('lw-name').value.trim(), details = document.getElementById('lw-details').value.trim(), platform = document.getElementById('lw-platform').value;
-  if (!name) { toast('Give the product a name first.'); return; }
-  S.listingName = name;
-  return runAI('listing', (sample) => sample.json(`You write product listings that sell, for e-commerce and dropshipping sellers. Platform: ${platform}. Market: ${S.store.user.market || 'not specified'}. Product: ${name}. Details from the seller: ${details || '(none)'}.
+  if (!readListingForm()) { toast('Give the product a name first.'); return; }
+  const { listingName: name, listingDetails: details, listingPlatform: platform } = S;
+  return runAI('listing', async (sample) => Object.assign(await sample.json(`You write product listings that sell, for e-commerce and dropshipping sellers. Platform: ${platform}. Market: ${S.store.user.market || 'not specified'}. Product: ${name}. Details from the seller: ${details || '(none)'}.
 Follow the platform's conventions (title length, bullet style). Lead with the benefit, then features. Use the search terms real shoppers type. Never invent specs, certifications or materials that weren't given; list what's missing in missing_info instead. No medical or "guaranteed" claims, no ALL CAPS.
-Reply with only JSON: {"title": string, "short_description": string, "bullet_points": [5 strings], "description": string, "seo_keywords": [8-15 strings], "hashtags": [5-10 strings], "missing_info": [string]}`, { modelTier: 'default', cache: false }));
+Reply with only JSON: {"title": string, "short_description": string, "bullet_points": [5 strings], "description": string, "seo_keywords": [8-15 strings], "hashtags": [5-10 strings], "missing_info": [string]}`, { modelTier: 'default', cache: false }), { title_limit: TITLE_LIMIT[platform] || null, made_by: 'ai' }));
 }
 
 /* ------------------------------------------------------------------ shell */
-const TABS = [['home', 'Home', 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['stock', 'Stock', 'M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10'], ['forecast', 'Forecast', 'M4 20V10M10 20V4M16 20v-7M22 20H2'], ['trends', 'Trends', 'M3 17l6-6 4 4 8-8M15 7h6v6'], ['ai', 'AI', 'M12 2l2.2 6.3L20 10l-5.8 1.7L12 18l-2.2-6.3L4 10l5.8-1.7zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z']];
-const TAB_OF = { 'weekly-plan': 'ai', 'product-check': 'ai', ask: 'ai', listing: 'ai', pro: 'ai', import: 'home', 'stock-counts': 'home', costs: 'home', account: 'home', fees: 'home' };
+const TABS = [['home', 'Home', 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['stock', 'Stock', 'M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10'], ['forecast', 'Forecast', 'M4 20V10M10 20V4M16 20v-7M22 20H2'], ['trends', 'Trends', 'M3 17l6-6 4 4 8-8M15 7h6v6'], ['ai', 'Tools', 'M12 2l2.2 6.3L20 10l-5.8 1.7L12 18l-2.2-6.3L4 10l5.8-1.7zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z']];
+const TAB_OF = { calculator: 'ai', 'weekly-plan': 'ai', 'product-check': 'ai', ask: 'ai', listing: 'ai', pro: 'ai', import: 'home', 'stock-counts': 'home', costs: 'home', account: 'home', fees: 'home' };
 function setTop(html) { document.getElementById('top').innerHTML = html ? `<div class="topbar">${html}</div>` : ''; }
 function render() {
   const view = (location.hash || '#home').slice(1);
   setTop('');
   let html, tab = TAB_OF[view] || view;
   if (/^product-\d+$/.test(view)) { html = product(view.slice(8)); tab = 'stock'; }
-  else html = ({ home, stock, forecast, trends, ai: aiHub, import: importView, 'stock-counts': () => stockCounts('stock'), costs: () => stockCounts('cost'), fees, account, pro, 'weekly-plan': weeklyPlan, 'product-check': productCheck, ask, listing }[view] || home)();
+  else html = ({ home, stock, forecast, trends, ai: aiHub, import: importView, 'stock-counts': () => stockCounts('stock'), costs: () => stockCounts('cost'), fees, account, pro, 'weekly-plan': weeklyPlan, calculator, 'product-check': productCheck, ask, listing }[view] || home)();
   document.getElementById('screen').innerHTML = html;
   document.getElementById('tabs').innerHTML = TABS.map(([h, l, d]) => `<a href="#${h}" ${tab === h ? 'aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round" stroke-linecap="round"/></svg>${l}</a>`).join('');
   document.getElementById('plan-free').setAttribute('aria-pressed', S.plan === 'free');
@@ -676,6 +875,8 @@ function render() {
 function wireView() {
   const q = document.getElementById('inv-q');
   if (q) q.addEventListener('input', () => { S.invQuery = q.value; document.getElementById('inv-list').innerHTML = invRows(); });
+  document.querySelectorAll('[data-calc]').forEach((inp) => inp.addEventListener('input', () => { calcState()[inp.dataset.calc] = inp.value; const o = document.getElementById('calc-out'); if (o) o.innerHTML = calcResult(); }));
+  document.querySelectorAll('[data-calcch]').forEach((sel) => sel.addEventListener('change', () => { calcState().channel = sel.value; const o = document.getElementById('calc-out'); if (o) o.innerHTML = calcResult(); }));
   const f = document.getElementById('ask-form');
   if (f) f.addEventListener('submit', (e) => { e.preventDefault(); const v = document.getElementById('ask-q').value; sendAsk(v); });
   const drop = document.getElementById('drop');
@@ -721,10 +922,17 @@ document.addEventListener('click', async (e) => {
   else if (d.ai === 'trends') scanTrends();
   else if (d.ai === 'check') runCheck();
   else if (d.ai === 'listing') runListing();
+  else if (d.draftlisting) { if (!readListingForm()) toast('Give the product a name first.'); else { S.reports.listing = draftListing(S.listingName, S.listingDetails, S.listingPlatform); S.reports.listing_error = ''; render(); } }
   else if (d.askq) sendAsk(d.askq);
-  else if (d.checkidea) { S.checkIdea = d.checkidea; }
+  else if (d.askai) askAI();
+  else if (d.checkidea) { S.checkIdea = d.checkidea; S.checkRan = true; Object.assign(calcState(), { price: d.checkprice || '', cost: '', ship: '', ads: '' }); }
+  else if (d.runcheck) { const v = document.getElementById('pc-idea').value.trim(); if (v.length < 3) toast('Describe the product first.'); else { S.checkIdea = v; S.checkRan = true; render(); } }
+  else if (d.tniche) { S.trendNiche = d.tniche; render(); }
+  else if (d.addlib) { const [k, i] = d.addlib.split(':'), t = LIB.niches.find((n) => n.key === k).items[+i]; E.addProduct(S.store, { sku: 'IDEA-' + String(S.store.nextId).padStart(4, '0'), name: t.name, stage: 'idea', stock_known: false, sell_price: priceFromHint(t.price_hint), cost_price: 0, category: t.supplier_search, source: 'trends' }); saveLocal(); toast('Added to your ideas below.'); render(); }
+  else if (d.calcfrom) { const p = byId(d.calcfrom), ch = S.store.sales.filter((x) => x.pid === p.id).slice(-1)[0]?.channel; Object.assign(calcState(), { price: String(p.sell_price), cost: p.cost_price ? String(p.cost_price) : '', channel: E.channelKey(ch) }); render(); }
+  else if (d.aimap !== undefined) { const t = S.imp.tables[+d.aimap]; await aiMapColumns(t); recompute(t); render(); }
   else if (d.addidea !== undefined) { const t = S.reports.trends.trending_products[+d.addidea]; E.addProduct(S.store, { sku: 'IDEA-' + String(S.store.nextId).padStart(4, '0'), name: t.name, stage: 'idea', stock_known: false, sell_price: +t.est_retail_price || 0, cost_price: +t.est_supplier_cost || 0, category: t.supplier_search || '' }); saveLocal(); toast('Added to your ideas.'); render(); }
-  else if (d.addcheck) { const r = S.reports.check; if (!ideas().some((p) => p.name.toLowerCase() === r.idea.toLowerCase())) { E.addProduct(S.store, { sku: 'IDEA-' + String(S.store.nextId).padStart(4, '0'), name: r.idea, stage: 'idea', stock_known: false, sell_price: r.price, cost_price: r.cost }); saveLocal(); } toast('Added to your ideas on the Trends tab.'); }
+  else if (d.addcheck) { const { price, cost } = calcNumbers(); if (!haveIdea(S.checkIdea)) { E.addProduct(S.store, { sku: 'IDEA-' + String(S.store.nextId).padStart(4, '0'), name: S.checkIdea, stage: 'idea', stock_known: false, sell_price: price, cost_price: cost }); saveLocal(); } toast('Added to your ideas on the Trends tab.'); }
   else if (d.startselling) { const p = byId(d.startselling); p.stage = 'active'; if (p.sku.startsWith('IDEA-')) p.sku = 'NEW-' + p.sku.slice(5); fcCache = null; saveLocal(); toast('Moved into your stock. Add its stock count there.'); render(); }
   else if (d.removeidea) { S.store.products = S.store.products.filter((p) => p.id !== +d.removeidea); saveLocal(); render(); }
   else if (d.copylisting) { const r = S.reports.listing, text = [r.title, '', r.short_description, '', ...(r.bullet_points || []).map((x) => '• ' + x), '', r.description, '', (r.hashtags || []).join(' ')].join('\n'); try { await navigator.clipboard.writeText(text); toast('Copied.'); } catch { toast('Copy blocked here. Select the text and copy it.'); } }

@@ -533,7 +533,7 @@
     while (remaining > 0) { demand += (fc.weeks.length ? fc.weeks[Math.min(i, fc.weeks.length - 1)] : 0) * Math.min(1, remaining); remaining -= 1; i++; }
     const target = weekly > 0 ? Math.ceil(demand + safety) : 0;
     const notes = [];
-    const plan = (status, cover, days, date, reorder, reason) => ({ status, weeks_of_cover: cover, stockout_in_days: days, stockout_date: date, reorder_qty: reorder, safety_stock: safety, target_stock: target, reason, notes });
+    const plan = (status, cover, days, date, reorder, reason) => ({ status, weeks_of_cover: cover, stockout_in_days: days, stockout_date: date, reorder_qty: reorder, safety_stock: safety, target_stock: target, reason, notes, order_by: null });
     if (!stockKnown) {
       if (weekly <= 0.05) return Object.assign(plan('no_demand', null, null, null, 0, 'No recent sales.'), { safety_stock: 0, target_stock: 0 });
       return plan('stock_unknown', null, null, null, 0, `Add your stock count to get reorder advice. You need about ${target} units available to cover the next ${Math.round(horizonWeeks)} weeks.`);
@@ -551,7 +551,9 @@
     if (fulfilment === 'dropship') { notes.push("Dropship item: the stock figure is your supplier's. Check they can cover this amount."); if (status === 'reorder_now' || status === 'out_of_stock') notes.push("Line up a backup supplier so your listing doesn't go out of stock."); }
     if (incoming && reorder) notes.push(`The ${incoming} units already on order are taken off the suggested order.`);
     const date = days !== null ? new Date(today + days * DAY).toISOString().slice(0, 10) : null;
-    return plan(status, cover, days, date, reorder, reason);
+    const iso = (t) => new Date(t).toISOString().slice(0, 10);
+    const orderBy = status === 'out_of_stock' ? iso(today) : (status === 'reorder_now' || status === 'low') && days !== null ? iso(today + Math.max(0, days - lead) * DAY) : null;
+    return Object.assign(plan(status, cover, days, date, reorder, reason), { order_by: orderBy });
   }
 
   // ------------------------------------------------------------------ calendar
@@ -694,5 +696,119 @@
     };
   }
 
-  root.Engine = { ImportProblem, readTables, analyse, extract, summary, describe, missingFor, requiredRoles, parseDate, parseNumber, newStore, applyImport, addProduct, findProduct, weeklyBuckets, forecastWeekly, planStock, upcomingEvents, feeTable, channelKey, productStats, activeProducts, dashboard, forecasts, productForecast, DAY };
+
+  // ------------------------------------------------------------------ insights (mirrors backend app/insights.py)
+  const SYMBOLS = { USD: '$', GBP: '£', EUR: '€', AUD: 'A$', CAD: 'C$' };
+  const BIG_EVENTS = new Set(['Black Friday', 'Cyber Monday', 'Christmas', 'Boxing Day', "Singles' Day (11.11)", "Valentine's Day", "Mother's Day (UK)", "Mother's Day (US)", "Father's Day (US & UK)"]);
+  const r2 = (v) => Math.round(v * 100) / 100;
+  function money(v, currency) {
+    const a = Math.abs(v), s = a >= 100 ? a.toLocaleString('en-US', { maximumFractionDigits: 0 }) : a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const sym = SYMBOLS[currency];
+    return (v < 0 ? '-' : '') + (sym ? sym + s : `${s} ${currency}`);
+  }
+
+  /** 80/20: A = the few products making ~80% of profit, B = next 15%, C = the tail, plus losing ones. */
+  function focusList(store, products, now, days = 90) {
+    const since = now - days * DAY, t = feeTable(store.user.fees), agg = new Map(products.map((p) => [p.id, { units: 0, revenue: 0, fees: 0 }]));
+    for (const s of store.sales) {
+      const a = agg.get(s.pid); if (!a || s.when < since || s.when >= now) continue;
+      a.units += s.qty; a.revenue += s.qty * s.price; a.fees += saleFee(t, s.channel, s.qty * s.price);
+    }
+    const rows = products.map((p) => { const a = agg.get(p.id); return { id: p.id, sku: p.sku, name: p.name, units: a.units, revenue: r2(a.revenue), profit: r2(a.revenue - a.fees - a.units * p.cost_price), cost_known: p.cost_price > 0 }; });
+    rows.sort((a, b) => b.profit - a.profit);
+    const positive = rows.reduce((x, r) => x + (r.profit > 0 ? r.profit : 0), 0);
+    let cum = 0;
+    for (const r of rows) {
+      if (r.profit < 0) { r.group = 'losing'; r.share = 0; continue; }
+      const share = positive ? r.profit / positive : 0, before = cum; cum += share;
+      r.share = Math.round(share * 1e4) / 1e4; r.group = before < 0.8 ? 'A' : before < 0.95 ? 'B' : 'C';
+    }
+    const aCount = rows.filter((r) => r.group === 'A').length, sold = rows.filter((r) => r.units > 0);
+    const summary = !positive || !sold.length ? 'Not enough sales yet to see where your profit comes from.'
+      : aCount / sold.length > 0.6 ? 'Your profit is spread across most of your products, so no single one carries the store.'
+      : `${aCount} of your ${sold.length} selling products make about 80% of your profit. Never let them run out.`;
+    return { days, total_profit: r2(rows.reduce((x, r) => x + r.profit, 0)), summary, missing_cost: sold.filter((r) => !r.cost_known).length, items: rows };
+  }
+
+  /** Pairs of products often in the same order, with lift (how much more often than chance). */
+  function bundles(store, products, now, days = 180, minTogether = 3) {
+    const since = now - days * DAY, names = new Map(products.map((p) => [p.id, p.name])), orders = new Map();
+    for (const s of store.sales) {
+      if (!s.order || !names.has(s.pid) || s.when < since || s.when >= now || s.order.startsWith('manual')) continue;
+      if (!orders.has(s.order)) orders.set(s.order, new Set());
+      orders.get(s.order).add(s.pid);
+    }
+    const single = new Map(), pairs = new Map();
+    for (const items of orders.values()) {
+      for (const i of items) single.set(i, (single.get(i) || 0) + 1);
+      if (items.size > 1) {
+        const ids = [...items].sort((a, b) => a - b);
+        for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) { const k = ids[i] + ':' + ids[j]; pairs.set(k, (pairs.get(k) || 0) + 1); }
+      }
+    }
+    const out = [];
+    for (const [k, together] of [...pairs.entries()].sort((a, b) => b[1] - a[1])) {
+      if (together < minTogether) break;
+      const [a, b] = k.split(':').map(Number), lift = single.get(a) && single.get(b) ? (together * orders.size) / (single.get(a) * single.get(b)) : 0;
+      if (lift <= 1) continue;
+      out.push({ a: { id: a, name: names.get(a) }, b: { id: b, name: names.get(b) }, orders_together: together, lift: r2(lift), tip: `Bought together in ${together} orders. Offer them as a bundle or show one on the other's page.` });
+      if (out.length >= 6) break;
+    }
+    const multi = [...orders.values()].filter((x) => x.size > 1).length;
+    const note = out.length ? '' : !orders.size ? "Your sales file has no order numbers, so we can't see which products are bought together." : multi < 10 ? 'Not enough orders with two or more different products yet.' : 'Your customers mostly buy one product at a time, so no strong pairs yet.';
+    return { days, orders: orders.size, multi_item_orders: multi, pairs: out, note };
+  }
+
+  const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MO = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const fmtDate = (iso) => { const d = new Date(iso + 'T00:00:00Z'); return `${WD[d.getUTCDay()]} ${d.getUTCDate()} ${MO[d.getUTCMonth()]}`; };
+
+  /** This week's prioritised to-do list from the numbers alone. */
+  function smartPlan(forecast, dash, focus, bundleData, currency, today = '') {
+    const when = (iso) => (today && iso <= today ? 'today' : `by ${fmtDate(iso)}`);
+    const m = (v) => money(v, currency), items = forecast.items.filter((it) => !it.locked), actions = [];
+    const add = (priority, kind, title, detail, sku = '') => actions.push({ priority, kind, title, detail, sku });
+    const aGroup = new Set(focus.items.filter((r) => r.group === 'A').map((r) => r.id));
+    for (const it of items) {
+      const p = it.product, fc = it.forecast, plan = it.stock_plan, star = aGroup.has(p.id) ? " It's one of your top earners." : '';
+      if (plan.status === 'out_of_stock') add('high', 'restock_urgent', `Restock ${p.name} today: order ${plan.reorder_qty} units`, `Sold out while customers still buy about ${Math.round(fc.next_week)} a week.${star}`, p.sku);
+      else if (plan.status === 'reorder_now') add('high', 'reorder', `Order ${plan.reorder_qty} × ${p.name} ${when(plan.order_by)}`, `${plan.reason}${star}`, p.sku);
+    }
+    for (const it of items) { const p = it.product, plan = it.stock_plan; if (plan.status === 'low' && plan.order_by) add('medium', 'reorder', `Plan an order of ${plan.reorder_qty} × ${p.name} ${when(plan.order_by)}`, plan.reason, p.sku); }
+    const unknown = items.filter((it) => it.stock_plan.status === 'stock_unknown');
+    if (unknown.length) add('medium', 'setup', `Add stock counts for ${unknown.length} products`, "Without them we can't tell you when to reorder. It takes a minute on the Stock & costs screen.");
+    if (dash.inventory.cost_missing) add('medium', 'setup', `Add your cost per item for ${dash.inventory.cost_missing} products`, 'Profit and the restock budget need what you pay per item.');
+    const rising = items.filter((it) => it.forecast.trend === 'rising' && (it.forecast.accuracy || 0) >= 0.55).sort((a, b) => b.next_week_revenue - a.next_week_revenue).slice(0, 2);
+    for (const it of rising) { const pc = Math.round(it.forecast.trend_pct * 100); add('medium', 'promote', `Push ${it.product.name}: sales up ${pc}%`, `Sales rose ${pc}% over the last 4 weeks. A short video or a featured spot could add to it.`, it.product.sku); }
+    const top = [...items].sort((a, b) => b.next_week_revenue - a.next_week_revenue).slice(0, 3);
+    const window = Math.max(21, ...top.map((it) => it.product.lead_time_days + 10));
+    const ev = (forecast.events || []).find((e) => BIG_EVENTS.has(e.name) && e.in_days <= window);
+    if (ev) add('medium', 'marketing', `Get ready for ${ev.name} in ${ev.in_days} days`, `Check stock on your best sellers. Units to have available: ${top.map((it) => `${it.product.name} (${it.stock_plan.target_stock})`).join(', ')}.`);
+    const pairFor = new Map();
+    for (const pr of bundleData.pairs || []) { if (!pairFor.has(pr.a.id)) pairFor.set(pr.a.id, pr.b.name); if (!pairFor.has(pr.b.id)) pairFor.set(pr.b.id, pr.a.name); }
+    const best = items.reduce((b, it) => (!b || it.next_week_revenue > b.next_week_revenue ? it : b), null);
+    const dead = items.filter((it) => it.stock_plan.status === 'dead_stock').sort((a, b) => b.product.stock_qty * b.product.cost_price - a.product.stock_qty * a.product.cost_price).slice(0, 2);
+    for (const it of dead) {
+      const p = it.product, partner = pairFor.get(p.id) || (best && best !== it ? best.product.name : null);
+      add('low', 'clear_stock', `Clear ${p.name}: ${m(p.stock_qty * p.cost_price)} tied up`, `${p.stock_qty} in stock and no sales in 30 days. ${partner ? `Bundle it with ${partner}` : 'Try a bundle'}, or a 15–20% discount.`, p.sku);
+    }
+    for (const it of items) if (it.stock_plan.status === 'overstock') add('low', 'reorder', `Pause reordering ${it.product.name}`, it.stock_plan.reason, it.product.sku);
+    const k7 = dash.kpis['7d'], st = forecast.store, change = k7.change.revenue;
+    const trendWord = change == null ? '' : `, ${change >= 0 ? 'up' : 'down'} ${Math.round(Math.abs(change) * 100)}% on the week before`;
+    const firstHigh = actions.find((a) => a.priority === 'high'), budget = st.restock_budget.now;
+    return {
+      headline: firstHigh ? firstHigh.title : 'Nothing urgent this week. Use the time to grow your best sellers.',
+      summary: `Last 7 days: ${m(k7.revenue)} revenue and ${m(k7.profit)} profit after fees${trendWord}. ${focus.summary}`,
+      next_week_outlook: `Expect about ${Math.round(st.next_weeks_units[0])} units, ${m(st.next_weeks_revenue[0])} revenue and ${m(st.next_weeks_profit[0])} profit next week.` + (budget > 0 ? ` Orders to place now cost about ${m(budget)}.` : ''),
+      actions: actions.slice(0, 10), made_by: 'numbers',
+    };
+  }
+
+  function priceForMargin(cost, shipping, feePct, feeFixed, ad, margin) { const keep = 1 - feePct / 100 - margin; return keep > 0 ? r2((cost + shipping + feeFixed + ad) / keep) : null; }
+  /** What one sale really earns, and how much advertising it can afford. */
+  function profitCalc(price, cost, shipping, feePct, feeFixed, ad = 0) {
+    const fee = (price * feePct) / 100 + feeFixed, before = price - cost - shipping - fee, profit = before - ad;
+    return { price_for_30pct_margin: priceForMargin(cost, shipping, feePct, feeFixed, ad, 0.3), fees: r2(fee), profit_before_ads: r2(before), profit: r2(profit), margin_pct: price ? Math.round((profit / price) * 1000) / 10 : 0, max_ad_cost_per_sale: r2(Math.max(0, before)), break_even_roas: before > 0 ? r2(price / before) : null };
+  }
+
+  root.Engine = { ImportProblem, readTables, analyse, extract, summary, describe, missingFor, requiredRoles, parseDate, parseNumber, newStore, applyImport, addProduct, findProduct, weeklyBuckets, forecastWeekly, planStock, upcomingEvents, feeTable, channelKey, productStats, activeProducts, dashboard, forecasts, productForecast, focusList, bundles, smartPlan, profitCalc, money, fmtDate, DAY };
 })(typeof window !== 'undefined' ? window : globalThis);

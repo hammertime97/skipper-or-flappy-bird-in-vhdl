@@ -153,6 +153,16 @@ class SimSale:
     cancelled: bool
 
 
+# (product index, often bought with product index, chance per order)
+COMPANIONS: dict[str, list[tuple[int, int, float]]] = {
+    "ebay": [(0, 1, 0.6)],          # console + controller
+    "amazon": [(1, 2, 0.4)],        # spiralizer + oil sprayer
+    "shopify": [(3, 0, 0.6)],       # yoga mat + resistance bands
+    "etsy": [(0, 1, 0.6)],          # initial necklace + huggie hoops
+    "tiktok": [(2, 0, 0.5)],        # skin scrubber + ice roller
+}
+
+
 def simulate(store: SampleStore, weeks: int = 26, now: datetime | None = None, seed: int = 11) -> list[SimSale]:
     """Order lines for the store, oldest first, ending yesterday."""
     rng = random.Random(f"{store.key}-{seed}")
@@ -181,7 +191,14 @@ def simulate(store: SampleStore, weeks: int = 26, now: datetime | None = None, s
             i += 1
         order_no += 1
         i += 1
-    return sales
+    # Products customers often buy together (so the "Bought together" insight has something real to find).
+    extra = [
+        SimSale(store.products[b], s.when, 1, store.products[b].price, s.order, s.cancelled)
+        for a, b, prob in COMPANIONS.get(store.key, [])
+        for s in sales
+        if s.product is store.products[a] and rng.random() < prob
+    ]
+    return sorted(sales + extra, key=lambda s: s.when)
 
 
 def _csv(rows: list[list[str]], delimiter: str = ",") -> str:

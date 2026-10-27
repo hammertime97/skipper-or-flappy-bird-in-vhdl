@@ -9,6 +9,7 @@ const expected = JSON.parse(fs.readFileSync('expected.json'));
 const now = Date.UTC(2026, 9, 27);
 let bad = 0, checked = 0;
 const close = (a, b) => (a === null && b === null) || (a !== null && b !== null && Math.abs(a - b) < 1e-6 * Math.max(1, Math.abs(b)));
+const ins = expected._insights; delete expected._insights;
 for (const [key, sheets] of Object.entries(expected)) {
   const fn = sheets[0].file;
   const buf = fs.readFileSync(fn);
@@ -31,4 +32,12 @@ for (const [key, sheets] of Object.entries(expected)) {
     }
   });
 }
-console.log(`checked ${checked} product forecasts across ${Object.keys(expected).length} files; mismatches: ${bad}`);
+// 80/20 focus list, bundles and the profit calculator on a random store
+const st = E.newStore();
+for (const p of ins.products) E.addProduct(st, p);
+st.sales = ins.sales.map(([pid, qty, price, when, channel, order]) => ({ pid, qty, price, when, channel, order }));
+const prods = st.products, same = (name, a, b) => { checked++; if (JSON.stringify(a) !== JSON.stringify(b)) { bad++; console.log(name, '\njs', JSON.stringify(a), '\npy', JSON.stringify(b)); } };
+same('focus', E.focusList(st, prods, now), ins.focus);
+same('bundles', E.bundles(st, prods, now), ins.bundles);
+ins.calc_args.forEach((args, i) => same('calc ' + i, E.profitCalc(...args), ins.calc[i]));
+console.log(`checked ${checked} product forecasts across ${Object.keys(expected).length} files, plus insights; mismatches: ${bad}`);

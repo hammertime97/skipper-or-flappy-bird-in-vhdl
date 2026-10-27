@@ -91,6 +91,7 @@ class StockPlan:
     target_stock: int  # units to have available to cover lead time + cover period + safety
     reason: str = ""
     notes: list[str] = field(default_factory=list)
+    order_by: str | None = None  # last day to place the order so stock arrives before it runs out
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -476,7 +477,12 @@ def plan_stock(
         notes.append(f"The {incoming} units already on order are taken off the suggested order.")
 
     stockout_date = (today + timedelta(days=stockout_days)).date().isoformat() if stockout_days is not None else None
-    return StockPlan(status, weeks_of_cover, stockout_days, stockout_date, reorder, safety, target, reason, notes)
+    order_by = None
+    if status == "out_of_stock":
+        order_by = today.date().isoformat()
+    elif status in ("reorder_now", "low") and stockout_days is not None:
+        order_by = (today + timedelta(days=max(0, stockout_days - lead_time_days))).date().isoformat()
+    return StockPlan(status, weeks_of_cover, stockout_days, stockout_date, reorder, safety, target, reason, notes, order_by)
 
 
 # ---------------------------------------------------------------------------------------------

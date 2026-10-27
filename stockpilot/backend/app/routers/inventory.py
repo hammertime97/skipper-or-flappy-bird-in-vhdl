@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
-from .. import billing, demo, fees, services
+from .. import billing, demo, fees, insights, services, trend_library
 from ..auth import current_user
 from ..config import settings
 from ..db import get_session
@@ -272,3 +272,35 @@ def get_forecasts(
 def seed_demo(user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict:
     """Replace this account's data with a demo pet-supplies store."""
     return demo.seed(session, user)
+
+
+def _insights(session: Session, user: User) -> tuple[dict, dict]:
+    now = utcnow()
+    products = services.active_products(session, user.id)
+    sales = services.sales_since(session, user.id, now - timedelta(days=180))
+    table = fees.fee_table(user.channel_fees)
+    return insights.focus_list(products, sales, now, table), insights.bundles(products, sales, now)
+
+
+@router.get("/insights")
+def get_insights(user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict:
+    """Where the profit comes from (80/20) and what customers buy together. No AI, every plan."""
+    focus, pairs = _insights(session, user)
+    return {"focus": focus, "bundles": pairs}
+
+
+@router.get("/plan")
+def get_smart_plan(user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict:
+    """This week's to-do list from the numbers alone (no AI, so free on every plan)."""
+    limit = None if billing.is_pro(user) else settings.free_forecast_products
+    fc = services.forecasts(session, user, max_products=limit)
+    dash = services.dashboard(session, user)
+    focus, pairs = _insights(session, user)
+    plan = insights.smart_plan(fc, dash, focus, pairs, user.currency, utcnow().date().isoformat())
+    return {**plan, "store_forecast": fc["store"], "events": fc["events"]}
+
+
+@router.get("/trends/library")
+def get_trend_library(user: User = Depends(current_user)) -> dict:
+    """Researched trending products per niche, matched to the seller's niche. No AI, every plan."""
+    return trend_library.library_payload(user.niche)
