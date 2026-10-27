@@ -35,9 +35,10 @@ def test_declining_series_detected_and_never_negative():
     assert all(v >= 0 for v in fc.weeks + fc.lower)
 
 
-def test_intermittent_uses_croston():
+def test_intermittent_uses_slow_seller_models():
     fc = forecast_weekly([0, 4, 0, 0, 3, 0, 0, 5, 0, 0, 4, 0])
-    assert fc.method == "croston_sba"
+    assert fc.intermittent
+    assert {m.name for m in fc.models} <= {"croston_sba", "tsb", "mean4", "ses"}
     assert 0.5 < fc.next_week < 3
 
 
@@ -45,6 +46,40 @@ def test_short_history_is_new_low_confidence():
     fc = forecast_weekly([0, 0, 3, 5])
     assert fc.trend == "new" and fc.confidence == "low"
     assert fc.history == [3, 5]
+    assert fc.accuracy is None
+
+
+def test_ensemble_is_backtested_and_reports_accuracy():
+    fc = forecast_weekly([20, 21, 19, 20, 22, 20, 19, 21, 20, 20, 21, 19, 20, 22])
+    assert fc.method == "ensemble"
+    assert fc.tested_weeks >= 4 and fc.accuracy is not None and fc.accuracy > 0.85
+    assert len(fc.models) == 3 and abs(sum(m.weight for m in fc.models) - 1) < 1e-9
+
+
+def test_seasonal_model_used_with_a_year_of_history():
+    import math
+
+    y = [20 + 15 * math.sin(2 * math.pi * t / 52) for t in range(70)]
+    fc = forecast_weekly(y)
+    expected = 20 + 15 * math.sin(2 * math.pi * 70 / 52)
+    assert fc.seasonal
+    assert abs(fc.next_week - expected) < 4
+
+
+def test_unknown_stock_gives_target_not_status():
+    fc = forecast_weekly([14] * 12)
+    plan = plan_stock(fc, 0, 0, 14, NOW, stock_known=False)
+    assert plan.status == "stock_unknown" and plan.target_stock >= 56 and plan.reorder_qty == 0
+
+
+def test_shopping_calendar():
+    from datetime import date
+
+    from app.forecasting import upcoming_events
+
+    names = {e["name"]: e["date"] for e in upcoming_events(date(2026, 10, 27), weeks=6)}
+    assert names["Black Friday"] == "2026-11-27" and names["Cyber Monday"] == "2026-11-30"
+    assert "Halloween" in names
 
 
 def test_plan_reorder_now_when_stock_runs_out_before_lead_time():

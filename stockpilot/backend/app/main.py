@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import init_db
-from .routers import account, ai, inventory
+from .routers import account, ai, imports, inventory
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("stockpilot")
@@ -32,6 +32,7 @@ app.add_middleware(
 app.include_router(account.router)
 app.include_router(inventory.router)
 app.include_router(ai.router)
+app.include_router(imports.router)
 
 
 @app.get("/health")

@@ -1,4 +1,0 @@
-sku,quantity,unit_price,sold_at,channel,order_ref
-MUG-001,1,49.99,2026-10-20,shopify,#1001
-LAMP-002,2,29.99,2026-10-21,tiktok,#1002
-LAMP-002,1,29.99,2026-10-23,shopify,#1003

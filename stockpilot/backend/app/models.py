@@ -21,6 +21,8 @@ class User(SQLModel, table=True):
     currency: str = "USD"
     plan: str = "free"  # "free" | "pro"
     plan_expires_at: Optional[datetime] = None
+    # Selling fees per channel, e.g. {"ebay": {"pct": 13.25, "fixed": 0.30}}; defaults in fees.py.
+    channel_fees: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -40,12 +42,17 @@ class Product(SQLModel, table=True):
     supplier: str = ""
     fulfilment: str = "own_stock"  # "own_stock" | "dropship"
     image_url: str = ""
+    stock_known: bool = True  # False when created from a sales file and nobody has entered stock yet
+    stage: str = "active"  # "active" | "idea" (added from Trend Scout, not selling yet)
+    source: str = ""  # platform it was imported from
     archived: bool = False
     created_at: datetime = Field(default_factory=utcnow)
 
 
 class Sale(SQLModel, table=True):
     """One order line: N units of a product sold at a price."""
+
+    __table_args__ = (UniqueConstraint("user_id", "import_key"),)
 
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)
@@ -55,6 +62,8 @@ class Sale(SQLModel, table=True):
     channel: str = ""  # "shopify", "tiktok", "amazon", ...
     order_ref: str = ""
     sold_at: datetime = Field(default_factory=utcnow, index=True)
+    # Fingerprint of the file row it came from, so uploading the same file twice adds nothing.
+    import_key: Optional[str] = None
 
 
 class AIReport(SQLModel, table=True):
@@ -65,3 +74,16 @@ class AIReport(SQLModel, table=True):
     kind: str = Field(index=True)  # "weekly_brief" | "trend_scout" | "assistant" | "listing"
     payload: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class ImportJob(SQLModel, table=True):
+    """An uploaded file waiting for the seller to confirm what we read from it."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    filename: str = ""
+    # [{"sheet": str, "rows": [[str]], "analysis": {...}}] - one entry per CSV or Excel sheet
+    sheets: list[Any] = Field(default_factory=list, sa_column=Column(JSON))
+    status: str = "pending"  # "pending" | "done"
+    result: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=utcnow)

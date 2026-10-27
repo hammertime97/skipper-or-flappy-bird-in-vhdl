@@ -5,3 +5,4 @@ anthropic>=2.3.0
 pyjwt>=2.9
 python-multipart>=0.0.9
 email-validator>=2.0
+openpyxl>=3.1

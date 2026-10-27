@@ -39,6 +39,7 @@ def run(
     schema: type[T],
     max_searches: int = 8,
     effort: str = "high",
+    model: str | None = None,
 ) -> tuple[T, list[dict]]:
     """Return (validated report, list of {url, title} sources Claude read)."""
     tools = [
@@ -52,7 +53,7 @@ def run(
     for _ in range(MAX_ROUNDS):
         try:
             with client.beta.messages.stream(
-                model=settings.claude_model,
+                model=model or settings.claude_research_model,
                 max_tokens=32000,
                 betas=[FALLBACK_BETA],
                 fallbacks="default",

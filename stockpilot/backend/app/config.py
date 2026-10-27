@@ -16,7 +16,10 @@ class Settings:
     database_url: str = field(default_factory=lambda: os.environ.get("DATABASE_URL", "sqlite:///./stockpilot.db"))
     jwt_secret: str = field(default_factory=lambda: os.environ.get("JWT_SECRET", "dev-only-change-me"))
     jwt_ttl_days: int = field(default_factory=lambda: _env_int("JWT_TTL_DAYS", 30))
+    # Everyday AI work (assistant, listings, reading spreadsheets).
     claude_model: str = field(default_factory=lambda: os.environ.get("CLAUDE_MODEL", "claude-opus-5-5"))
+    # Deep research and planning (Weekly Plan, Trend Scout, Product Check): Anthropic's most capable model.
+    claude_research_model: str = field(default_factory=lambda: os.environ.get("CLAUDE_RESEARCH_MODEL", "claude-fable-5-1"))
     # Shared secret RevenueCat sends in the Authorization header of its webhooks.
     revenuecat_webhook_secret: str = field(default_factory=lambda: os.environ.get("REVENUECAT_WEBHOOK_SECRET", ""))
     # AI calls a free-plan user gets each calendar month (a taste of Pro).

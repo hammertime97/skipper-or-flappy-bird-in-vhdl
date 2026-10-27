@@ -1,6 +1,3 @@
-import io
-
-
 def test_register_login_and_me(client):
     r = client.post("/auth/register", json={"email": "Me@Example.com", "password": "password123"})
     assert r.status_code == 201
@@ -36,16 +33,6 @@ def test_other_users_products_are_hidden(client, auth):
     assert client.post("/sales", headers=h2, json={"product_id": p["id"], "quantity": 1}).status_code == 404
 
 
-def test_csv_import(client, auth):
-    h, _ = auth
-    products = "sku,name,cost_price,sell_price,stock_qty,fulfilment\nB1,Bowl,1.5,9.99,20,dropship\n,missing,1,1,1,\n"
-    r = client.post("/import/products", headers=h, files={"file": ("p.csv", io.BytesIO(products.encode()), "text/csv")}).json()
-    assert r["created"] == 1 and len(r["errors"]) == 1
-    sales = "sku,quantity,unit_price,sold_at\nB1,2,9.99,2026-10-01\nZZ,1,1,2026-10-01\n"
-    r = client.post("/import/sales", headers=h, files={"file": ("s.csv", io.BytesIO(sales.encode()), "text/csv")}).json()
-    assert r["imported"] == 1 and "unknown sku" in r["errors"][0]
-
-
 def test_demo_seed_and_forecasts_free_limit(client, auth):
     h, _ = auth
     seeded = client.post("/demo/seed", headers=h).json()
@@ -73,3 +60,44 @@ def test_revenuecat_webhook_upgrades_and_expires(client, auth):
     event["event"]["type"] = "EXPIRATION"
     client.post("/billing/revenuecat-webhook", json=event, headers={"Authorization": "Bearer rc-secret"})
     assert client.get("/billing/status", headers=h).json()["plan"] == "free"
+
+
+def test_free_plan_locks_forecast_on_product_page_too(client, auth):
+    h, _ = auth
+    client.post("/demo/seed", headers=h)
+    fc = client.get("/forecasts", headers=h).json()
+    locked = [it["product"]["id"] for it in fc["items"] if it["locked"]]
+    unlocked = [it["product"]["id"] for it in fc["items"] if not it["locked"]]
+    d = client.get(f"/products/{locked[0]}", headers=h).json()
+    assert d["locked"] and "forecast" not in d
+    d = client.get(f"/products/{unlocked[0]}", headers=h).json()
+    assert not d["locked"] and d["forecast"]["method"] in ("ensemble", "recent_mean")
+
+
+def test_forecast_extras_and_fees(client, auth):
+    h, _ = auth
+    client.post("/demo/seed", headers=h)
+    fc = client.get("/forecasts", headers=h).json()
+    assert fc["store"]["restock_budget"]["now"] > 0
+    assert isinstance(fc["events"], list)
+    item = next(it for it in fc["items"] if not it["locked"] and it["forecast"]["accuracy"] is not None)
+    assert 0 <= item["forecast"]["accuracy"] <= 1 and item["forecast"]["models"]
+    before = client.get("/dashboard", headers=h).json()["kpis"]["30d"]
+    assert before["fees"] > 0 and before["profit"] < before["revenue"]
+    client.put("/me/fees", headers=h, json={k: {"pct": 0, "fixed": 0} for k in ["ebay", "amazon", "etsy", "tiktok", "shopify", "other"]})
+    after = client.get("/dashboard", headers=h).json()["kpis"]["30d"]
+    assert after["fees"] == 0 and after["profit"] > before["profit"]
+
+
+def test_stock_unknown_after_sales_import_then_typed_in(client, auth):
+    h, _ = auth
+    prev = client.post("/import/samples/tiktok/try", headers=h).json()
+    res = client.post(f"/import/{prev['job_id']}/confirm", headers=h, json={}).json()
+    dash = client.get("/dashboard", headers=h).json()
+    assert dash["inventory"]["stock_unknown"] == 5 and dash["todo"][0]["key"] == "stock"
+    fc = client.get("/forecasts", headers=h).json()
+    statuses = {it["stock_plan"]["status"] for it in fc["items"] if not it["locked"]}
+    assert "stock_unknown" in statuses and "out_of_stock" not in statuses
+    items = [{"id": p["id"], "stock_qty": 100} for p in res["needs_stock"]]
+    assert client.post("/products/stock-counts", headers=h, json={"items": items}).json()["updated"] == 5
+    assert client.get("/dashboard", headers=h).json()["inventory"]["stock_unknown"] == 0

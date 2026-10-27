@@ -6,7 +6,6 @@ from types import SimpleNamespace as NS
 import pytest
 
 from app.ai import client as ai_client
-from app.ai.weekly_brief import Action, WeeklyBrief
 
 
 class FakeMessages:
@@ -42,31 +41,50 @@ def fake(monkeypatch):
     return install
 
 
-def _brief():
-    return WeeklyBrief(
-        headline="Restock the laser toy",
-        summary="s",
-        next_week_outlook="o",
-        actions=[Action(priority="high", kind="restock_urgent", title="t", detail="d", sku="PET-003")],
-        risks=[],
-        opportunities=[],
-    )
+BRIEF = {
+    "headline": "Restock the laser toy",
+    "summary": "s",
+    "next_week_outlook": "o",
+    "actions": [{"priority": "high", "kind": "restock_urgent", "title": "t", "detail": "d", "sku": "PET-003"}],
+    "adjustments": [{"sku": "PET-006", "change_pct": 400, "reason": "Viral video", "source_url": "https://example.com/v"}],
+    "market_notes": [],
+    "risks": [],
+    "opportunities": [],
+}
 
 
 def test_weekly_brief_and_free_quota(client, auth, fake):
     h, _ = auth
-    msgs = fake(parsed=_brief())
+    msgs = fake(stream_script=[NS(stop_reason="tool_use", content=[_tool_use("report_weekly_plan", BRIEF)])] * 3)
     assert client.post("/ai/weekly-brief", headers=h).status_code == 400  # no data yet
     client.post("/demo/seed", headers=h)
     r = client.post("/ai/weekly-brief", headers=h)
     assert r.status_code == 200, r.text
-    assert r.json()["brief"]["actions"][0]["sku"] == "PET-003"
+    body = r.json()
+    assert body["brief"]["actions"][0]["sku"] == "PET-003"
+    adj = body["adjusted"][0]
+    assert adj["change_pct"] == 150  # capped
+    assert adj["adjusted_next_week"] == round(adj["base_next_week"] * 2.5, 1)
     call = msgs.calls[-1]
-    assert call["fallbacks"] == "default" and "PET-003" in call["messages"][0]["content"]
+    assert call["fallbacks"] == "default" and call["model"] == "claude-fable-5-1"
+    assert "PET-003" in call["messages"][0]["content"] and "upcoming_events" in call["messages"][0]["content"]
     assert client.post("/ai/weekly-brief", headers=h).status_code == 200
     r = client.post("/ai/weekly-brief", headers=h)  # FREE_AI_CALLS_PER_MONTH=2 in tests
     assert r.status_code == 402 and r.json()["detail"]["code"] == "upgrade_required"
     assert len(client.get("/ai/reports?kind=weekly_brief", headers=h).json()) == 2
+
+
+def test_ideas_flow(client, auth):
+    h, _ = auth
+    r = client.post("/ai/ideas", headers=h, json={"name": "Cooling mat", "est_price": 29.0, "est_cost": 8.0, "report_id": 1})
+    assert r.status_code == 201 and r.json()["stage"] == "idea"
+    assert client.post("/ai/ideas", headers=h, json={"name": "cooling mat"}).status_code == 409
+    assert [i["name"] for i in client.get("/ai/ideas", headers=h).json()] == ["Cooling mat"]
+    assert client.get("/products", headers=h).json() == []  # ideas aren't inventory yet
+    pid = r.json()["id"]
+    p = client.post(f"/ai/ideas/{pid}/start-selling", headers=h, json={"sku": "CM-1", "stock_qty": 20, "fulfilment": "dropship"}).json()
+    assert p["stage"] == "active" and p["sku"] == "CM-1" and p["stock_known"]
+    assert len(client.get("/products", headers=h).json()) == 1
 
 
 def _tool_use(name, input_, id_="tu_1"):

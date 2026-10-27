@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlmodel import Session, select
 
-from .. import billing
+from .. import billing, fees
 from ..auth import create_token, current_user, hash_password, verify_password
 from ..config import settings
 from ..db import get_session
@@ -91,3 +91,21 @@ def revenuecat_webhook(
     if not hmac.compare_digest(supplied, secret):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Bad webhook secret")
     return {"result": billing.apply_revenuecat_event(session, payload.get("event") or {})}
+
+
+class FeeRate(BaseModel):
+    pct: float = Field(ge=0, le=60)
+    fixed: float = Field(ge=0, le=20)
+
+
+@router.get("/me/fees")
+def get_fees(user: User = Depends(current_user)) -> dict:
+    return {"fees": fees.fee_table(user.channel_fees), "note": "Typical rates for most categories. Change them to match your account."}
+
+
+@router.put("/me/fees")
+def put_fees(body: dict[str, FeeRate], user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict:
+    user.channel_fees = {k: v.model_dump() for k, v in body.items() if k in fees.DEFAULT_FEES}
+    session.add(user)
+    session.commit()
+    return {"fees": fees.fee_table(user.channel_fees)}

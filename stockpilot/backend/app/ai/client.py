@@ -60,11 +60,18 @@ def translate_errors(exc: Exception) -> AIError:
     raise exc
 
 
-def structured(system: str, user_content: str, schema: type[T], effort: str = "medium", max_tokens: int = 16000) -> T:
+def structured(
+    system: str,
+    user_content: str,
+    schema: type[T],
+    effort: str = "medium",
+    max_tokens: int = 16000,
+    model: str | None = None,
+) -> T:
     """One request whose answer is validated against a Pydantic model."""
     try:
         response = get_client().beta.messages.parse(
-            model=settings.claude_model,
+            model=model or settings.claude_model,
             max_tokens=max_tokens,
             betas=[FALLBACK_BETA],
             fallbacks="default",

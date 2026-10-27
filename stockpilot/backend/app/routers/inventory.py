@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import csv
-import io
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
-from .. import billing, demo, services
+from .. import billing, demo, fees, services
 from ..auth import current_user
 from ..config import settings
 from ..db import get_session
@@ -88,8 +86,57 @@ def list_products(
     if q:
         ql = q.lower()
         products = [p for p in products if ql in p.name.lower() or ql in p.sku.lower() or ql in p.category.lower()]
-    stats = services.product_stats(products, services.sales_since(session, user.id, now - timedelta(days=30)), now)
+    table = fees.fee_table(user.channel_fees)
+    stats = services.product_stats(products, services.sales_since(session, user.id, now - timedelta(days=30)), now, table)
     return [services.product_out(p, stats[p.id]) for p in products]
+
+
+class StockCount(BaseModel):
+    id: int
+    stock_qty: int
+
+
+class StockCounts(BaseModel):
+    items: list[StockCount]
+
+
+@router.post("/products/stock-counts")
+def set_stock_counts(body: StockCounts, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict:
+    """Type in stock for several products at once (after importing a sales file)."""
+    updated = 0
+    for item in body.items:
+        p = session.get(Product, item.id)
+        if p is None or p.user_id != user.id:
+            continue
+        p.stock_qty, p.stock_known = item.stock_qty, True
+        session.add(p)
+        updated += 1
+    session.commit()
+    return {"updated": updated}
+
+
+class CostItem(BaseModel):
+    id: int
+    cost_price: float = Field(ge=0)
+
+
+class CostItems(BaseModel):
+    items: list[CostItem]
+
+
+@router.post("/products/costs")
+def set_costs(body: CostItems, user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict:
+    """Type in what you pay per item for several products at once."""
+    updated = 0
+    for item in body.items:
+        p = session.get(Product, item.id)
+        if p is None or p.user_id != user.id:
+            continue
+        p.cost_price = item.cost_price
+        session.add(p)
+        updated += 1
+    session.commit()
+    return {"updated": updated}
 
 
 @router.post("/products", status_code=201)
@@ -115,13 +162,21 @@ def get_product(product_id: int, user: User = Depends(current_user), session: Se
     p = _own_product(session, user, product_id)
     now = utcnow()
     sales = list(session.exec(select(Sale).where(Sale.product_id == p.id, Sale.sold_at >= now - timedelta(weeks=services.HISTORY_WEEKS))))
-    stats = services.product_stats([p], sales, now)[p.id]
+    stats = services.product_stats([p], sales, now, fees.fee_table(user.channel_fees))[p.id]
     out = services.product_out(p, stats)
     history = weekly_buckets(((s.sold_at, s.quantity) for s in sales), now, services.HISTORY_WEEKS)
     out["weekly_units"] = history
-    fc = forecast_weekly(services.uncensor(history, p.stock_qty), 4)
-    out["forecast"] = fc.to_dict()
-    out["stock_plan"] = plan_stock(fc, p.stock_qty, p.incoming_qty, p.lead_time_days, now, fulfilment=p.fulfilment).to_dict()
+    # Free plan: full forecasts only for the top sellers, the same rule as the Forecast tab.
+    locked = not billing.is_pro(user) and p.id not in services.unlocked_product_ids(
+        session, user, settings.free_forecast_products, now
+    )
+    out["locked"] = locked
+    if not locked:
+        fc = forecast_weekly(services.uncensor(history, p.stock_qty, p.stock_known), 4)
+        out["forecast"] = fc.to_dict()
+        out["stock_plan"] = plan_stock(
+            fc, p.stock_qty, p.incoming_qty, p.lead_time_days, now, fulfilment=p.fulfilment, stock_known=p.stock_known
+        ).to_dict()
     out["recent_sales"] = [
         {"id": s.id, "quantity": s.quantity, "unit_price": s.unit_price, "channel": s.channel, "sold_at": s.sold_at.isoformat()}
         for s in sorted(sales, key=lambda s: s.sold_at, reverse=True)[:20]
@@ -136,6 +191,8 @@ def update_product(
     p = _own_product(session, user, product_id)
     for k, v in body.model_dump(exclude_none=True).items():
         setattr(p, k, v)
+    if body.stock_qty is not None:
+        p.stock_known = True
     session.add(p)
     session.commit()
     session.refresh(p)
@@ -155,7 +212,8 @@ def adjust_stock(
     product_id: int, body: StockAdjust, user: User = Depends(current_user), session: Session = Depends(get_session)
 ) -> dict:
     p = _own_product(session, user, product_id)
-    p.stock_qty += body.delta
+    p.stock_qty = (p.stock_qty if p.stock_known else 0) + body.delta
+    p.stock_known = True
     if body.receive_incoming and body.delta > 0:
         p.incoming_qty = max(0, p.incoming_qty - body.delta)
     session.add(p)
@@ -208,112 +266,6 @@ def get_forecasts(
 ) -> dict:
     limit = None if billing.is_pro(user) else settings.free_forecast_products
     return services.forecasts(session, user, horizon=horizon, max_products=limit)
-
-
-# ---- CSV import -----------------------------------------------------------------------------------
-
-def _rows(upload: UploadFile) -> list[dict]:
-    raw = upload.file.read(5_000_000 + 1)
-    if len(raw) > 5_000_000:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "CSV must be under 5 MB")
-    text = raw.decode("utf-8-sig", errors="replace")
-    reader = csv.DictReader(io.StringIO(text))
-    return [{(k or "").strip().lower(): (v or "").strip() for k, v in row.items()} for row in reader]
-
-
-def _num(v: str, default: float = 0.0) -> float:
-    try:
-        return float(v.replace(",", "").replace("$", "").replace("£", "").replace("€", "")) if v else default
-    except ValueError:
-        return default
-
-
-def _date(v: str) -> datetime | None:
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"):
-        try:
-            return datetime.strptime(v[:19], fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    try:
-        return _as_utc(datetime.fromisoformat(v))
-    except ValueError:
-        return None
-
-
-@router.post("/import/products")
-def import_products(
-    file: UploadFile = File(...), user: User = Depends(current_user), session: Session = Depends(get_session)
-) -> dict:
-    """Columns: sku, name, category, cost_price, sell_price, stock_qty, lead_time_days, supplier, fulfilment."""
-    created = updated = 0
-    errors: list[str] = []
-    existing = {p.sku: p for p in session.exec(select(Product).where(Product.user_id == user.id))}
-    for i, row in enumerate(_rows(file), start=2):
-        sku = row.get("sku") or row.get("variant sku") or ""
-        name = row.get("name") or row.get("title") or ""
-        if not sku or not name:
-            errors.append(f"row {i}: sku and name are required")
-            continue
-        fields = {
-            "name": name,
-            "category": row.get("category") or row.get("type") or "",
-            "cost_price": _num(row.get("cost_price") or row.get("cost per item") or ""),
-            "sell_price": _num(row.get("sell_price") or row.get("price") or row.get("variant price") or ""),
-            "stock_qty": int(_num(row.get("stock_qty") or row.get("inventory") or row.get("variant inventory qty") or "")),
-            "lead_time_days": int(_num(row.get("lead_time_days") or "", 7)),
-            "supplier": row.get("supplier") or row.get("vendor") or "",
-            "fulfilment": "dropship" if (row.get("fulfilment") or "").lower().startswith("drop") else "own_stock",
-        }
-        if sku in existing:
-            p = existing[sku]
-            for k, v in fields.items():
-                setattr(p, k, v)
-            p.archived = False
-            updated += 1
-        else:
-            p = Product(user_id=user.id, sku=sku, **fields)
-            existing[sku] = p
-            created += 1
-        session.add(p)
-    session.commit()
-    return {"created": created, "updated": updated, "errors": errors[:50]}
-
-
-@router.post("/import/sales")
-def import_sales(
-    file: UploadFile = File(...),
-    adjust_stock: bool = False,
-    user: User = Depends(current_user),
-    session: Session = Depends(get_session),
-) -> dict:
-    """Columns: sku, quantity, unit_price, sold_at, channel, order_ref (Shopify order exports also work)."""
-    products = {p.sku: p for p in session.exec(select(Product).where(Product.user_id == user.id))}
-    imported = 0
-    errors: list[str] = []
-    for i, row in enumerate(_rows(file), start=2):
-        sku = row.get("sku") or row.get("lineitem sku") or ""
-        p = products.get(sku)
-        if p is None:
-            errors.append(f"row {i}: unknown sku '{sku}'")
-            continue
-        qty = int(_num(row.get("quantity") or row.get("lineitem quantity") or "", 1))
-        when = _date(row.get("sold_at") or row.get("created at") or row.get("date") or "")
-        if qty <= 0 or when is None:
-            errors.append(f"row {i}: needs a positive quantity and a date")
-            continue
-        price = _num(row.get("unit_price") or row.get("lineitem price") or "", p.sell_price)
-        session.add(
-            Sale(
-                user_id=user.id, product_id=p.id, quantity=qty, unit_price=price, sold_at=when,
-                channel=row.get("channel") or row.get("source") or "", order_ref=row.get("order_ref") or row.get("name") or "",
-            )
-        )
-        if adjust_stock:
-            p.stock_qty -= qty
-            session.add(p)
-        imported += 1
-    session.commit()
-    return {"imported": imported, "errors": errors[:50]}
 
 
 @router.post("/demo/seed")

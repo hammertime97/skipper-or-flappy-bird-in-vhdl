@@ -46,11 +46,15 @@ REPORT_TOOL = {
                         "fit_with_store": {"type": "string", "description": "How it fits the seller's current catalogue."},
                         "how_to_sell_it": {"type": "string", "description": "Angle, channel and creative idea."},
                         "risk": {"type": "string"},
+                        "est_retail_price": {"type": "number", "description": "Typical selling price as one number, 0 if unknown."},
+                        "est_supplier_cost": {"type": "number", "description": "Typical supplier cost as one number, 0 if unknown."},
+                        "supplier_search": {"type": "string", "description": "What to type into AliExpress/CJ/Alibaba to find it."},
                         "source_urls": {"type": "array", "items": {"type": "string"}},
                     },
                     "required": [
                         "name", "why_trending", "evidence", "momentum", "competition", "typical_retail_price",
-                        "typical_supplier_cost", "fit_with_store", "how_to_sell_it", "risk", "source_urls",
+                        "typical_supplier_cost", "fit_with_store", "how_to_sell_it", "risk", "est_retail_price",
+                        "est_supplier_cost", "supplier_search", "source_urls",
                     ],
                     "additionalProperties": False,
                 },
@@ -80,6 +84,9 @@ class TrendingProduct(BaseModel):
     fit_with_store: str
     how_to_sell_it: str
     risk: str
+    est_retail_price: float = 0.0
+    est_supplier_cost: float = 0.0
+    supplier_search: str = ""
     source_urls: list[str]
 
 
@@ -91,9 +98,13 @@ class TrendReport(BaseModel):
     content_ideas: list[str]
 
 
-def generate(niche: str, market: str, catalogue: list[str], today: date | None = None) -> tuple[TrendReport, list[dict]]:
+def generate(
+    niche: str, market: str, catalogue: list[str], today: date | None = None, ideas: list[str] | None = None
+) -> tuple[TrendReport, list[dict]]:
     today = today or date.today()
     listed = "\n".join(f"- {name}" for name in catalogue[:80]) or "- (no products yet)"
+    if ideas:
+        listed += "\nAlready on their idea list (suggest different products):\n" + "\n".join(f"- {i}" for i in ideas[:30])
     prompt = (
         f"Today is {today.isoformat()}.\n"
         f"Niche: {niche}\n"
