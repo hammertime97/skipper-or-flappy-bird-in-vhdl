@@ -65,6 +65,9 @@ def _try_ai_mapping(a: Analysis) -> tuple[Analysis, bool]:
     return a2, True
 
 
+NOTHING_ADDED = "Nothing was added: no row had a date, product and quantity we could read."
+
+
 def _sheet_preview(rows: list[list[str]], a: Analysis, ai_mapped: bool, sheet: str) -> dict:
     x = importer.extract(rows, a) if not a.missing else importer.Extracted()
     if a.kind == "orders":
@@ -85,15 +88,27 @@ def _sheet_preview(rows: list[list[str]], a: Analysis, ai_mapped: bool, sheet: s
         "columns": a.columns,
         "reads": a.describe(),
         "missing": [importer.ROLE_LABELS[m] for m in a.missing],
-        "ready": not a.missing,
+        "ready": not a.missing and bool(x.orders or x.stock),
         "ai_mapped": ai_mapped,
         "examples": examples,
         **importer.summary(a, x),
     }
 
 
+def _forget_old_uploads(session: Session) -> None:
+    """Uploads nobody confirmed within a day hold raw file contents we no longer need: delete them."""
+    cutoff = utcnow() - timedelta(days=1)
+    for job in session.exec(select(ImportJob).where(ImportJob.status == "pending", ImportJob.created_at < cutoff)):
+        session.delete(job)
+
+
 def create_job(session: Session, user: User, filename: str, data: bytes, use_ai: bool = True) -> dict:
     tables = importer.read_tables(filename, data)
+    if all(not rows or len(rows) <= importer.find_header(rows) + 1 for _, rows in tables):
+        raise importer.ImportError_(
+            "We found the column headings but no rows under them. Check the date range when you download the file."
+        )
+    _forget_old_uploads(session)
     stored, previews = [], []
     for sheet, rows in tables:
         a = importer.analyse(rows)
@@ -264,21 +279,21 @@ def confirm_job(session: Session, user: User, job_id: int, overrides: list[dict]
     needs_cost = [p for p in cat.products if p.cost_price <= 0 and not p.archived and p.stage == "active"]
     lines = []
     if sales_added:
-        lines.append(f"Added {sales_added:,} sales ({units_added:,} items sold).")
+        lines.append(f"Added {importer.plural(sales_added, 'sale')} ({importer.plural(units_added, 'item')} sold).")
     if dupes:
-        lines.append(f"Skipped {dupes:,} sales you had already uploaded.")
+        lines.append(f"Skipped {importer.plural(dupes, 'sale')} you had already uploaded.")
     if cat.created:
-        lines.append(f"Created {len(cat.created):,} new products.")
+        lines.append(f"Created {importer.plural(len(cat.created), 'new product')}.")
     if cat.updated:
-        lines.append(f"Updated {len(cat.updated):,} products.")
+        lines.append(f"Updated {importer.plural(len(cat.updated), 'product')}.")
     if cancelled:
-        lines.append(f"Left out {cancelled:,} cancelled or refunded orders.")
+        lines.append(f"Left out {importer.plural(cancelled, 'cancelled or refunded order')}.")
     result = {
         "sales_added": sales_added,
         "duplicates_skipped": dupes,
         "products_created": len(cat.created),
         "products_updated": len(cat.updated),
-        "summary": lines or ["Nothing new in this file. Everything in it was already uploaded."],
+        "summary": lines or [NOTHING_ADDED],
         "needs_stock": [{"id": p.id, "sku": p.sku, "name": p.name} for p in needs_stock],
         "needs_cost": [{"id": p.id, "sku": p.sku, "name": p.name, "sell_price": p.sell_price} for p in needs_cost],
     }

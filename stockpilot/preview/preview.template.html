@@ -377,7 +377,7 @@ function importView() {
   }
   if (I.step === 'reading') return spinner(I.busyText || 'Reading your file…');
   if (I.step === 'preview') {
-    const ready = I.tables.some((t) => !t.missing.length);
+    const ready = I.tables.some((t) => !t.missing.length && t.x && (t.x.orders.length || t.x.stock.length));
     return `<div><h1>Check what we found</h1><p class="sub">${esc(I.filename)}. Nothing is saved until you tap Import.</p></div>
     ${I.tables.map((t, i) => sheetCard(t, i)).join('')}
     ${I.error ? `<div class="card" style="border-color:var(--critical)">${esc(I.error)}</div>` : ''}
@@ -420,6 +420,7 @@ async function readFile(name, buf, isSample) {
   await new Promise((r) => setTimeout(r, 30));
   try {
     const tables = E.readTables(name, buf).map(({ sheet, rows }) => ({ sheet, rows, a: E.analyse(rows), aiMapped: false }));
+    if (tables.every((t) => t.rows.length <= t.a.header_row + 1)) throw new E.ImportProblem('We found the column headings but no rows under them. Check the date range when you download the file.');
     for (const t of tables) {
       recompute(t);
     }

@@ -19,11 +19,18 @@ import csv
 import hashlib
 import io
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
-MAX_ROWS = 100_000
+MAX_ROWS = 250_000
+MAX_QTY_PER_LINE = 100_000  # anything above is a typo or a different column
+MAX_UNIT_PRICE = 1_000_000
+TOO_MANY_ROWS = (
+    f"This file has more than {MAX_ROWS:,} rows. Download a shorter date range (for example the last 12 months) "
+    "and upload that."
+)
 
 # ---------------------------------------------------------------------------------------------
 # Column roles and the header names that mean them (compared after normalising: lower case,
@@ -34,28 +41,37 @@ ROLE_SYNONYMS: dict[str, list[str]] = {
     "date": [
         "saledate", "purchasedate", "createdat", "createdtime", "orderdate", "datepaid", "paidondate", "paidat",
         "paidtime", "orderedon", "date", "solddate", "orderplaceddate", "ordercreatedtime", "transactiondate", "dateordered",
+        # German, Spanish, French, Italian, Dutch
+        "datum", "bestelldatum", "verkaufsdatum", "fecha", "fechadepedido", "datedecommande", "datadellordine", "data", "besteldatum",
     ],
     "order_id": [
         "ordernumber", "amazonorderid", "orderid", "salesrecordnumber", "orderno", "order",
         "orderref", "orderreference", "transactionid",
+        "bestellnummer", "numerodepedido", "pedido", "numerodecommande", "commande", "numeroordine", "ordine", "bestelnummer",
     ],
     "sku": [
         "customlabel", "sellersku", "lineitemsku", "variantsku", "sku", "skuid", "itemsku", "productsku", "merchantsku",
         "partnumber", "productcode", "itemcode", "code",
+        "artikelnummer", "referencia", "reference", "codice", "artikelcode",
     ],
     "item_id": ["itemnumber", "asin", "listingid", "productid", "itemid", "ebayitemid"],
     "name": [
         "itemtitle", "lineitemname", "productname", "itemname", "title", "product", "productnames", "products",
         "item", "description", "listingtitle", "name",
+        "produkt", "artikel", "artikelname", "bezeichnung", "producto", "articulo", "produit", "article", "prodotto",
+        "articolo", "naam",
     ],
     "quantity": [
         "quantity", "lineitemquantity", "qty", "quantitypurchased", "quantityordered", "itemssold", "unitssold",
         "units", "quantitysold", "soldquantity", "qtysold",
+        "menge", "anzahl", "stuck", "cantidad", "unidades", "quantite", "quantita", "aantal",
     ],
     "unit_price": [
         "soldfor", "lineitemprice", "price", "skuunitoriginalprice", "unitprice", "itemprice", "saleprice",
         "priceeach", "sellingprice", "pricepaid", "currentprice", "startprice", "buyitnowprice", "regularprice",
         "yourprice", "retailprice",
+        "preis", "einzelpreis", "stuckpreis", "verkaufspreis", "precio", "preciounitario", "prix", "prixunitaire", "prezzo",
+        "prezzounitario", "prijs",
     ],
     "line_total": [
         "itemtotal", "skusubtotalafterdiscount", "skusubtotalbeforediscount", "linetotal", "netsales",
@@ -67,8 +83,10 @@ ROLE_SYNONYMS: dict[str, list[str]] = {
         "variantinventoryqty", "availablequantity", "quantityavailable", "stock", "stockqty", "instock", "onhand",
         "inventory", "inventoryqty", "afnfulfillablequantity", "fulfillablequantity", "available", "stocklevel",
         "stockquantity", "qtyonhand",
+        "bestand", "lagerbestand", "existencias", "inventario", "giacenza", "voorraad",
     ],
-    "cost": ["costperitem", "cost", "unitcost", "costprice", "buyprice", "purchaseprice", "suppliercost", "landedcost"],
+    "cost": ["costperitem", "cost", "unitcost", "costprice", "buyprice", "purchaseprice", "suppliercost", "landedcost",
+             "einkaufspreis", "kosten", "coste", "costo", "cout", "prixdachat", "inkoopprijs"],
     "category": ["type", "category", "productcategory", "producttype", "categoryname"],
     "supplier": ["vendor", "supplier", "brand", "manufacturer"],
     "lead_time_days": ["leadtimedays", "leadtime", "deliverydays", "shippingdays", "supplierdays"],
@@ -125,8 +143,14 @@ LINE_TOTAL_PRICE_PLATFORMS = {"amazon"}
 SKIP_STATUS = re.compile(r"cancel|refund|return|void|fail|declin|unpaid|pending payment", re.I)
 
 
+def plural(n: int, word: str) -> str:
+    """plural(1, "product") -> "1 product", plural(2345, "product") -> "2,345 products"."""
+    return f"{n:,} {word}{'' if n == 1 else 's'}"
+
+
 def norm(header: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", (header or "").lower())
+    plain = unicodedata.normalize("NFKD", (header or "").lower())  # "Quantité" -> "quantite"
+    return re.sub(r"[^a-z0-9]", "", "".join(ch for ch in plain if not unicodedata.combining(ch)))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -155,20 +179,24 @@ def read_tables(filename: str, data: bytes) -> list[tuple[str, list[list[str]]]]
     text = _decode(data)
     sample = text[:20000]
     delim = _sniff_delimiter(sample)
-    rows = list(csv.reader(io.StringIO(text), delimiter=delim))
-    return [("", [[c.strip() for c in r] for r in rows if any(c.strip() for c in r)][:MAX_ROWS])]
+    rows = [[c.strip() for c in r] for r in csv.reader(io.StringIO(text), delimiter=delim) if any(c.strip() for c in r)]
+    if len(rows) > MAX_ROWS:
+        raise ImportError_(TOO_MANY_ROWS)
+    return [("", rows)]
+
+
+NOT_A_TABLE = "This doesn't look like a sales or stock file. Please upload the CSV, TXT or Excel file you downloaded."
 
 
 def _decode(data: bytes) -> str:
-    for enc in ("utf-8-sig", "utf-16"):
-        try:
-            text = data.decode(enc)
-            if enc == "utf-16" and "\x00" in text:
-                continue
-            return text
-        except UnicodeDecodeError:
-            continue
-    return data.decode("cp1252", errors="replace")
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):  # UTF-16 with a byte-order mark (Excel "Unicode text")
+        return data.decode("utf-16", errors="replace")
+    if b"\x00" in data[:4096]:
+        raise ImportError_(NOT_A_TABLE)  # images, archives and other binary files
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode("cp1252", errors="replace")  # Excel on Windows saves CSV this way
 
 
 def _sniff_delimiter(sample: str) -> str:
@@ -202,8 +230,8 @@ def _read_xlsx(data: bytes) -> list[tuple[str, list[list[str]]]]:
             cells = [_cell(v) for v in row]
             if any(cells):
                 rows.append(cells)
-            if len(rows) >= MAX_ROWS:
-                break
+            if len(rows) > MAX_ROWS:
+                raise ImportError_(TOO_MANY_ROWS)
         # Keep sheets whose header names at least two columns we understand.
         if _header_score(rows) >= 2:
             sheets.append((ws.title, rows))
@@ -339,7 +367,10 @@ def analyse(rows: list[list[str]]) -> Analysis:
     if platform == "shopify":
         mapping.pop("line_total", None)  # Shopify's "Total" is the whole order, not one line
     if kind is None:
-        kind = "orders" if "date" in mapping and "quantity" in mapping else "stock"
+        # Most uploads are sales files: only call it a stock list when it has stock or cost columns and no dates.
+        kind = "stock" if ("stock" in mapping or "cost" in mapping) and "date" not in mapping else "orders"
+    if kind == "stock" and "stock" not in mapping and "quantity" in mapping:
+        mapping["stock"] = mapping.pop("quantity")  # in a stock list, "Quantity" means how many are on hand
     # A product must be identifiable by SKU, item ID or name.
     missing = [r for r in required_roles(kind) if r not in mapping]
     if not any(r in mapping for r in ("sku", "item_id", "name")):
@@ -356,7 +387,7 @@ _DATE_FORMATS = [
     "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%Y/%m/%d",
     "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M", "%m/%d/%Y",
     "%m/%d/%y", "%d/%m/%y", "%d-%m-%Y", "%d.%m.%Y", "%b %d, %Y", "%d %b %Y", "%b-%d-%y", "%d-%b-%y",
-    "%B %d, %Y", "%d %B %Y", "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y %I:%M %p", "%d/%m/%Y %I:%M:%S %p",
+    "%B %d, %Y", "%d %B %Y", "%d-%b-%Y", "%d-%B-%Y", "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y %I:%M %p", "%d/%m/%Y %I:%M:%S %p",
 ]
 
 _TZ_SUFFIX = re.compile(r"\s*(PST|PDT|EST|EDT|CST|CDT|MST|MDT|GMT|UTC|BST|CET|CEST|AEST|AEDT)$", re.I)
@@ -367,6 +398,9 @@ def parse_date(value: str, day_first: bool | None = None) -> datetime | None:
     if not v:
         return None
     v = _TZ_SUFFIX.sub("", v)
+    if re.fullmatch(r"\d{5}(\.\d+)?", v) and 30_000 <= float(v) <= 80_000:
+        # A spreadsheet date serial (days since 30 Dec 1899) that lost its date format, e.g. 46299 = 2026-10-03.
+        return datetime(1899, 12, 30, tzinfo=timezone.utc) + timedelta(days=float(v))
     try:
         dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
         return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
@@ -499,6 +533,7 @@ def extract(rows: list[list[str]], a: Analysis) -> Extracted:
         last_date_raw = ""
         cancelled_orders: set[str] = set()
         seen: dict[str, int] = {}
+        latest_ok = datetime.now(timezone.utc) + timedelta(days=1)  # time zones can put today's orders on "tomorrow"
         for i, r in enumerate(body, start=a.header_row + 2):
             if _row_is_footer(r):
                 continue
@@ -518,14 +553,22 @@ def extract(rows: list[list[str]], a: Analysis) -> Extracted:
             qty_raw = _get(r, m, "quantity")
             qty = parse_number(qty_raw) if qty_raw else 1.0
             when = parse_date(raw_date, day_first)
-            if not key or when is None or qty is None or qty <= 0:
+            price = parse_number(_get(r, m, "unit_price"))
+            reason = (
+                "no product name or SKU" if not key
+                else "no readable date" if when is None
+                else "date is in the future" if when > latest_ok
+                else "no quantity" if qty is None or qty <= 0
+                else "quantity looks wrong" if qty > MAX_QTY_PER_LINE
+                else "price looks wrong" if price is not None and abs(price) > MAX_UNIT_PRICE
+                else ""
+            )
+            if reason:
                 out.skipped_invalid += 1
                 if len(out.problems) < 20:
-                    reason = "no product name or SKU" if not key else "no readable date" if when is None else "no quantity"
                     out.problems.append(f"Row {i}: {reason}")
                 continue
             quantity = int(round(qty))
-            price = parse_number(_get(r, m, "unit_price"))
             total = parse_number(_get(r, m, "line_total"))
             if a.platform in LINE_TOTAL_PRICE_PLATFORMS and price is not None:
                 price = price / quantity
@@ -601,18 +644,18 @@ def summary(a: Analysis, x: Extracted) -> dict:
         span = ""
         if x.first_date and x.last_date:
             span = f" from {x.first_date:%d %b %Y} to {x.last_date:%d %b %Y}"
-        headline = f"We found {units:,} items sold across {len(products):,} products{span} in your {platform} file."
+        headline = f"We found {plural(units, 'item')} sold across {plural(len(products), 'product')}{span} in your {platform} file."
         if a.platform == "spreadsheet":
-            headline = f"We found {units:,} items sold across {len(products):,} products{span}."
+            headline = f"We found {plural(units, 'item')} sold across {plural(len(products), 'product')}{span}."
     else:
-        headline = f"We found {len(x.stock):,} products with stock levels in your {platform} file."
+        headline = f"We found {plural(len(x.stock), 'product')} with stock levels in your {platform} file."
         if a.platform == "spreadsheet":
-            headline = f"We found {len(x.stock):,} products with stock levels."
+            headline = f"We found {plural(len(x.stock), 'product')} with stock levels."
     notes = []
     if x.skipped_cancelled:
-        notes.append(f"{x.skipped_cancelled:,} cancelled or refunded orders will be left out.")
+        notes.append(f"{plural(x.skipped_cancelled, 'cancelled or refunded order')} will be left out.")
     if x.skipped_invalid:
-        notes.append(f"{x.skipped_invalid:,} rows will be skipped because they were incomplete.")
+        notes.append(f"{plural(x.skipped_invalid, 'row')} will be skipped because a date, product or quantity was missing or unreadable.")
     if a.kind == "orders" and x.last_date and x.last_date < datetime.now(timezone.utc) - timedelta(days=21):
         notes.append("The newest sale in this file is over 3 weeks old. Download a file that includes recent sales for better forecasts.")
     if a.kind == "orders" and x.first_date and x.last_date and (x.last_date - x.first_date).days < 42:

@@ -16,6 +16,8 @@ An AI co-pilot for e-commerce and dropshipping sellers, built as an Android app 
 - The app recognises the platform from the column names and works out which column is which. If a sheet is unfamiliar, Claude reads the column names; if that still isn't enough, the seller picks columns from plain questions ("Which column is the quantity sold?").
 - Before anything is saved, it shows what it read in plain words ("We found 2,236 items sold across 7 products from 28 Apr to 26 Oct in your eBay file. 62 cancelled orders will be left out.").
 - Cancelled and refunded orders are left out. Uploading the same file again doesn't double-count.
+- Messy files are handled: Windows Excel CSVs, UTF-16 text exports, semicolons and decimal commas, column names in German, French, Spanish, Italian or Dutch, dates like "03-Oct-2026" or spreadsheet date numbers. Rows with a date in the future, a negative quantity (refunds) or an impossible quantity or price are left out and counted. Anything unusable (a photo, an empty file, headings with no rows, more than 250,000 rows) gets a plain-English message instead of an error.
+- Uploads that are never confirmed are deleted after a day.
 - Sales files don't contain stock, so afterwards the app asks for stock counts and cost per item on one simple screen.
 - **Dummy files** for every platform live in [`docs/sample-data`](docs/sample-data); the app also has "Try a sample file" buttons.
 
@@ -85,7 +87,7 @@ stockpilot/
 │   ├── app/insights.py         money makers (80/20), bought together, weekly to-do plan, profit calculator
 │   ├── app/trend_library.py    researched trending products per niche (no AI)
 │   ├── app/ai/                 weekly_brief, trend_scout, product_check, assistant, listing, column_mapper
-│   └── tests/                  52 tests (importer on every sample file, forecasting, API, AI flows with Claude faked)
+│   └── tests/                  70 tests (importer on every sample file and on messy real-world files, forecasting, API, AI flows with Claude faked)
 ├── mobile/    Expo / React Native app (Android), Expo Router
 ├── preview/   self-contained web preview: the same importer and forecasting ported to JavaScript
 └── docs/      screenshots, sample (dummy) files
@@ -108,7 +110,7 @@ pip install -r requirements-dev.txt
 cp .env.example .env   # fill in ANTHROPIC_API_KEY and JWT_SECRET
 set -a && . ./.env && set +a
 uvicorn app.main:app --reload --port 8000
-pytest                 # 52 tests, no API key needed
+pytest                 # 70 tests, no API key needed
 ```
 
 **App**

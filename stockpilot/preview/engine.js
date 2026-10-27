@@ -7,7 +7,10 @@
   const DAY = 86400000;
 
   // ------------------------------------------------------------------ importer
-  const norm = (h) => String(h ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const norm = (h) => String(h ?? '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  const plural = (n, word) => `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' : 's'}`;
+  const MAX_ROWS = 250000, MAX_QTY_PER_LINE = 100000, MAX_UNIT_PRICE = 1000000;
+  const TOO_MANY_ROWS = `This file has more than ${MAX_ROWS.toLocaleString('en-US')} rows. Download a shorter date range (for example the last 12 months) and upload that.`;
   const KNOWN = new Set(Object.values(CFG.role_synonyms).flat());
   const SKIP_STATUS = /cancel|refund|return|void|fail|declin|unpaid|pending payment/i;
   const MONTH_FIRST = new Set(['etsy', 'amazon', 'tiktok', 'shopify']);
@@ -65,6 +68,7 @@
       for (const sn of wb.SheetNames) {
         const raw = root.XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: true, defval: '' });
         const rows = raw.map((r) => r.map(cellText)).filter((r) => r.some((c) => c));
+        if (rows.length > MAX_ROWS) throw new ImportProblem(TOO_MANY_ROWS);
         if (headerScore(rows) >= 2) sheets.push({ sheet: sn, rows });
       }
       if (!sheets.length) throw new ImportProblem("We couldn't find sales or stock columns in this Excel file. Make sure the first rows of a sheet have headings like Date, Product, Quantity, Price or Stock.");
@@ -75,10 +79,16 @@
     }
     if (/\.(numbers|pdf|zip)$/.test(lower)) throw new ImportProblem('Please upload a CSV, TXT or Excel (.xlsx) file.');
     let text;
-    try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
-    catch { text = new TextDecoder('windows-1252').decode(bytes); }
+    if ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff)) text = new TextDecoder(bytes[0] === 0xff ? 'utf-16le' : 'utf-16be').decode(bytes);
+    else if (bytes.subarray(0, 4096).includes(0)) throw new ImportProblem("This doesn't look like a sales or stock file. Please upload the CSV, TXT or Excel file you downloaded.");
+    else {
+      try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+      catch { text = new TextDecoder('windows-1252').decode(bytes); } // Excel on Windows saves CSV this way
+    }
     if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-    return [{ sheet: '', rows: parseCsv(text, sniffDelimiter(text.slice(0, 20000))).slice(0, 100000) }];
+    const rows = parseCsv(text, sniffDelimiter(text.slice(0, 20000)));
+    if (rows.length > MAX_ROWS) throw new ImportProblem(TOO_MANY_ROWS);
+    return [{ sheet: '', rows }];
   }
 
   function cellText(v) {
@@ -138,7 +148,9 @@
     let [platform, kind] = detectPlatform(headers);
     const mapping = mapColumns(headers, platform);
     if (platform === 'shopify') delete mapping.line_total;
-    if (!kind) kind = 'date' in mapping && 'quantity' in mapping ? 'orders' : 'stock';
+    // Most uploads are sales files: only call it a stock list when it has stock or cost columns and no dates.
+    if (!kind) kind = ('stock' in mapping || 'cost' in mapping) && !('date' in mapping) ? 'stock' : 'orders';
+    if (kind === 'stock' && !('stock' in mapping) && 'quantity' in mapping) { mapping.stock = mapping.quantity; delete mapping.quantity; }
     const missing = missingFor(kind, mapping);
     const confident = !missing.length && (platform !== 'spreadsheet' || Object.keys(mapping).length >= 3);
     return { platform, kind, header_row: h, columns: headers, mapping, missing, confident };
@@ -151,6 +163,8 @@
     let v = String(value ?? '').trim();
     if (!v) return null;
     v = v.replace(/\s*(PST|PDT|EST|EDT|CST|CDT|MST|MDT|GMT|UTC|BST|CET|CEST|AEST|AEDT)$/i, '');
+    // A spreadsheet date serial (days since 30 Dec 1899) that lost its date format, e.g. 46299 = 2026-10-03.
+    if (/^\d{5}(\.\d+)?$/.test(v) && +v >= 30000 && +v <= 80000) return Date.UTC(1899, 11, 30) + Math.round(+v * DAY);
     let m = v.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?)?\s*(Z|[+-]\d{2}:?\d{2})?$/);
     if (m) {
       let t = Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
@@ -225,7 +239,7 @@
       if (dayFirst === null && MONTH_FIRST.has(a.platform)) dayFirst = false;
       const cancelledCol = a.columns.findIndex((h) => ['cancelledat', 'cancelleddate'].includes(norm(h)));
       let lastOrder = '', lastDate = '';
-      const cancelledOrders = new Set(), seen = {};
+      const cancelledOrders = new Set(), seen = {}, latestOk = Date.now() + DAY; // time zones can put today's orders on "tomorrow"
       body.forEach((r, i) => {
         if (isFooter(r)) return;
         const orderRef = get(r, 'order_id') || lastOrder;
@@ -242,13 +256,15 @@
         const qRaw = get(r, 'quantity');
         const qty = qRaw ? parseNumber(qRaw) : 1;
         const when = parseDate(rawDate, dayFirst);
-        if (!key || when === null || qty === null || qty <= 0) {
+        let price = parseNumber(get(r, 'unit_price'));
+        const reason = !key ? 'no product name or SKU' : when === null ? 'no readable date' : when > latestOk ? 'date is in the future'
+          : qty === null || qty <= 0 ? 'no quantity' : qty > MAX_QTY_PER_LINE ? 'quantity looks wrong' : price !== null && Math.abs(price) > MAX_UNIT_PRICE ? 'price looks wrong' : '';
+        if (reason) {
           out.skipped_invalid++;
-          if (out.problems.length < 20) out.problems.push(`Row ${i + a.header_row + 2}: ${!key ? 'no product name or SKU' : when === null ? 'no readable date' : 'no quantity'}`);
+          if (out.problems.length < 20) out.problems.push(`Row ${i + a.header_row + 2}: ${reason}`);
           return;
         }
         const quantity = Math.round(qty);
-        let price = parseNumber(get(r, 'unit_price'));
         const total = parseNumber(get(r, 'line_total'));
         if (CFG.line_total_price_platforms.includes(a.platform) && price !== null) price = price / quantity;
         if (price === null && total !== null) price = total / quantity;
@@ -296,13 +312,13 @@
       const products = new Set(x.orders.map((o) => o.key)).size;
       const units = x.orders.reduce((s, o) => s + o.quantity, 0);
       const span = x.first !== null ? ` from ${fmtD(x.first)} to ${fmtD(x.last)}` : '';
-      headline = `We found ${units.toLocaleString('en-US')} items sold across ${products} products${span}` + (a.platform === 'spreadsheet' ? '.' : ` in your ${platform} file.`);
+      headline = `We found ${plural(units, 'item')} sold across ${plural(products, 'product')}${span}` + (a.platform === 'spreadsheet' ? '.' : ` in your ${platform} file.`);
     } else {
-      headline = `We found ${x.stock.length} products with stock levels` + (a.platform === 'spreadsheet' ? '.' : ` in your ${platform} file.`);
+      headline = `We found ${plural(x.stock.length, 'product')} with stock levels` + (a.platform === 'spreadsheet' ? '.' : ` in your ${platform} file.`);
     }
     const notes = [];
-    if (x.skipped_cancelled) notes.push(`${x.skipped_cancelled.toLocaleString('en-US')} cancelled or refunded orders will be left out.`);
-    if (x.skipped_invalid) notes.push(`${x.skipped_invalid.toLocaleString('en-US')} rows will be skipped because they were incomplete.`);
+    if (x.skipped_cancelled) notes.push(`${plural(x.skipped_cancelled, 'cancelled or refunded order')} will be left out.`);
+    if (x.skipped_invalid) notes.push(`${plural(x.skipped_invalid, 'row')} will be skipped because a date, product or quantity was missing or unreadable.`);
     if (a.kind === 'orders' && x.last !== null && x.last < now - 21 * DAY) notes.push('The newest sale in this file is over 3 weeks old. Download a file that includes recent sales for better forecasts.');
     if (a.kind === 'orders' && x.first !== null && x.last - x.first < 42 * DAY) notes.push('This file covers less than 6 weeks. Forecasts get much better with 3 months or more of sales.');
     return { headline, notes };
@@ -363,14 +379,14 @@
     }
     const active = store.products.filter((p) => p.stage === 'active');
     const lines = [];
-    if (added) lines.push(`Added ${added.toLocaleString('en-US')} sales (${units.toLocaleString('en-US')} items sold).`);
-    if (dupes) lines.push(`Skipped ${dupes.toLocaleString('en-US')} sales you had already uploaded.`);
-    if (created.length) lines.push(`Created ${created.length} new products.`);
-    if (updated.size) lines.push(`Updated ${updated.size} products.`);
-    if (cancelled) lines.push(`Left out ${cancelled.toLocaleString('en-US')} cancelled or refunded orders.`);
+    if (added) lines.push(`Added ${plural(added, 'sale')} (${plural(units, 'item')} sold).`);
+    if (dupes) lines.push(`Skipped ${plural(dupes, 'sale')} you had already uploaded.`);
+    if (created.length) lines.push(`Created ${plural(created.length, 'new product')}.`);
+    if (updated.size) lines.push(`Updated ${plural(updated.size, 'product')}.`);
+    if (cancelled) lines.push(`Left out ${plural(cancelled, 'cancelled or refunded order')}.`);
     return {
       sales_added: added, duplicates_skipped: dupes, products_created: created.length, products_updated: updated.size,
-      summary: lines.length ? lines : ['Nothing new in this file. Everything in it was already uploaded.'],
+      summary: lines.length ? lines : ['Nothing was added: no row had a date, product and quantity we could read.'],
       needs_stock: active.filter((p) => !p.stock_known), needs_cost: active.filter((p) => p.cost_price <= 0),
     };
   }
