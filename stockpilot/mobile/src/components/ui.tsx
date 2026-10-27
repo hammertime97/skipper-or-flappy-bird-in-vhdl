@@ -194,6 +194,7 @@ const STATUS: Record<StockStatus, { label: string; icon: string; tone: 'critical
   overstock: { label: 'Overstocked', icon: '▴', tone: 'muted' },
   dead_stock: { label: 'Not selling', icon: '•', tone: 'muted' },
   no_demand: { label: 'No sales', icon: '–', tone: 'muted' },
+  stock_unknown: { label: 'Add stock count', icon: '?', tone: 'warning' },
 };
 
 export function statusLabel(s: StockStatus) {

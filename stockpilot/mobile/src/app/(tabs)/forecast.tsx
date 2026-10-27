@@ -52,6 +52,33 @@ export default function ForecastScreen() {
             <StatTile label="Next 4 weeks revenue" value={money(data.store.next_weeks_revenue.reduce((a, b) => a + b, 0), cur)} />
           </Row>
 
+          {data.store.restock_budget.now > 0 || data.store.restock_budget.next_two_weeks > 0 ? (
+            <Card style={{ gap: 4 }}>
+              <T kind="label">Restock budget</T>
+              <T kind="hero">{money(data.store.restock_budget.now, cur)}</T>
+              <T kind="secondary">
+                Cash needed at cost price for the orders to place now
+                {data.store.restock_budget.next_two_weeks > 0
+                  ? `, plus about ${money(data.store.restock_budget.next_two_weeks, cur)} in the next two weeks`
+                  : ''}
+                .
+              </T>
+            </Card>
+          ) : null}
+
+          {data.events.length ? (
+            <Card style={{ gap: 4 }}>
+              <T kind="label">Coming up</T>
+              {data.events.map((e) => (
+                <T key={e.name + e.date}>
+                  {e.name} · {e.in_days === 0 ? 'today' : `in ${e.in_days} days`}
+                  {e.markets !== 'all' ? ` (${e.markets})` : ''}
+                </T>
+              ))}
+              <T kind="muted">Your Weekly Plan checks how these could change your sales.</T>
+            </Card>
+          ) : null}
+
           {data.store.weekly_revenue_history.length > 1 ? (
             <Card style={{ gap: Spacing.sm }}>
               <T kind="heading">Weekly revenue</T>
@@ -124,7 +151,8 @@ function ForecastRow({ item, cur }: { item: ForecastItem; cur: string }) {
             </T>
             <T kind="muted">
               {TREND_LABEL[fc.trend]}
-              {fc.trend === 'rising' || fc.trend === 'declining' ? ` ${pct(fc.trend_pct)}` : ''} · {fc.confidence} confidence
+              {fc.trend === 'rising' || fc.trend === 'declining' ? ` ${pct(fc.trend_pct)}` : ''}
+              {fc.accuracy != null ? ` · ${Math.round(fc.accuracy * 100)}% accurate` : ' · new, not tested yet'}
             </T>
           </View>
           <StatusPill status={plan.status} />

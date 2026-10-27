@@ -1,5 +1,10 @@
 import type {
   BillingStatus,
+  FeeRate,
+  ImportGuide,
+  ImportPreview,
+  ImportResult,
+  SampleFile,
   ChatTurn,
   Dashboard,
   ForecastResponse,
@@ -74,7 +79,7 @@ async function request<T>(method: string, path: string, body?: unknown, form?: F
   return data as T;
 }
 
-export type ProductInput = Omit<Product, 'id' | 'archived' | 'created_at'>;
+export type ProductInput = Omit<Product, 'id' | 'archived' | 'created_at' | 'stock_known' | 'stage' | 'source'>;
 
 export const api = {
   register: (email: string, password: string) =>
@@ -97,17 +102,31 @@ export const api = {
   recordSale: (productId: number, quantity: number, unitPrice?: number, channel = '') =>
     request('POST', '/sales', { product_id: productId, quantity, unit_price: unitPrice, channel }),
   forecasts: (horizon = 4) => request<ForecastResponse>('GET', `/forecasts?horizon=${horizon}`),
-  importCsv: (kind: 'products' | 'sales', file: { uri: string; name: string; mimeType?: string }) => {
+  importGuides: () => request<{ guides: ImportGuide[]; roles: Record<string, string> }>('GET', '/import/guides'),
+  importSamples: () => request<SampleFile[]>('GET', '/import/samples'),
+  uploadFile: (file: { uri: string; name: string; mimeType?: string }) => {
     const form = new FormData();
     // React Native's FormData accepts { uri, name, type } file parts.
     form.append('file', { uri: file.uri, name: file.name, type: file.mimeType ?? 'text/csv' } as unknown as Blob);
-    return request<{ created?: number; updated?: number; imported?: number; errors: string[] }>(
-      'POST',
-      `/import/${kind}`,
-      undefined,
-      form,
-    );
+    return request<ImportPreview>('POST', '/import/upload', undefined, form);
   },
+  trySample: (key: string) => request<ImportPreview>('POST', `/import/samples/${key}/try`),
+  confirmImport: (
+    jobId: number,
+    sheets: { index: number; skip?: boolean; kind?: string; mapping?: Record<string, string | null> }[] = [],
+  ) => request<ImportResult>('POST', `/import/${jobId}/confirm`, { sheets }),
+  setStockCounts: (items: { id: number; stock_qty: number }[]) =>
+    request<{ updated: number }>('POST', '/products/stock-counts', { items }),
+  setCosts: (items: { id: number; cost_price: number }[]) => request<{ updated: number }>('POST', '/products/costs', { items }),
+  fees: () => request<{ fees: Record<string, FeeRate>; note: string }>('GET', '/me/fees'),
+  saveFees: (fees: Record<string, { pct: number; fixed: number }>) =>
+    request<{ fees: Record<string, FeeRate> }>('PUT', '/me/fees', fees),
+  ideas: () => request<Product[]>('GET', '/ai/ideas'),
+  addIdea: (idea: { name: string; est_price?: number; est_cost?: number; note?: string; report_id?: number }) =>
+    request<Product>('POST', '/ai/ideas', idea),
+  startSelling: (id: number, body: { sku?: string; sell_price?: number; cost_price?: number; stock_qty?: number; fulfilment?: string }) =>
+    request<Product>('POST', `/ai/ideas/${id}/start-selling`, body),
+  removeIdea: (id: number) => request<void>('DELETE', `/ai/ideas/${id}`),
   seedDemo: () => request<{ products: number; sales: number }>('POST', '/demo/seed'),
 
   weeklyBrief: () => request<WeeklyBriefReport>('POST', '/ai/weekly-brief'),

@@ -18,7 +18,7 @@ function matches(p: Product, f: Filter) {
     case 'low':
       return p.days_of_stock != null && p.days_of_stock <= Math.max(14, p.lead_time_days + 7) && p.stock_qty > 0;
     case 'out':
-      return p.stock_qty <= 0;
+      return p.stock_known && p.stock_qty <= 0;
     case 'dead':
       return p.stock_qty > 0 && (p.units_30d ?? 0) === 0;
     case 'dropship':
@@ -79,12 +79,12 @@ export default function InventoryScreen() {
             <Empty
               title={data?.length ? 'Nothing matches' : 'No products yet'}
               body={data?.length ? 'Try another search or filter.' : 'Add your first product or import a CSV.'}
-              action={data?.length ? undefined : <Button title="Import CSV" kind="secondary" onPress={() => router.push('/import')} />}
+              action={data?.length ? undefined : <Button title="Import my sales" kind="secondary" onPress={() => router.push('/import')} />}
             />
           ) : undefined
         }
         renderItem={({ item: p }) => {
-          const out = p.stock_qty <= 0;
+          const out = p.stock_known && p.stock_qty <= 0;
           const low = matches(p, 'low');
           return (
             <Pressable
@@ -105,8 +105,10 @@ export default function InventoryScreen() {
                   </T>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <T style={{ fontWeight: '800', color: out ? c.critical : c.text }}>{out ? 'Out' : num(p.stock_qty)}</T>
-                  <T kind="muted">{p.fulfilment === 'dropship' ? 'supplier stock' : 'in stock'}</T>
+                  <T style={{ fontWeight: '800', color: out ? c.critical : c.text }}>
+                    {!p.stock_known ? '?' : out ? 'Out' : num(p.stock_qty)}
+                  </T>
+                  <T kind="muted">{!p.stock_known ? 'add stock' : p.fulfilment === 'dropship' ? 'supplier stock' : 'in stock'}</T>
                 </View>
               </Row>
               <Row style={{ justifyContent: 'space-between' }}>

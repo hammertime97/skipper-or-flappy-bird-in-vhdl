@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { BarChart } from '@/components/charts';
+import { Icon } from '@/components/icons';
 import { Button, Card, Chips, Empty, ErrorBox, Loading, Row, Screen, Section, StatTile, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useApi } from '@/hooks/use-api';
@@ -32,23 +33,28 @@ export default function DashboardScreen() {
 
   return (
     <Screen refreshing={refreshing} onRefresh={refresh}>
-      <View>
-        <T kind="muted">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</T>
-        <T kind="title">{data?.store_name || user?.store_name || 'Your store'}</T>
-      </View>
+      <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <View style={{ flex: 1 }}>
+          <T kind="muted">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</T>
+          <T kind="title">{data?.store_name || user?.store_name || 'Your store'}</T>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Account" onPress={() => router.push('/account')} style={{ padding: 6 }}>
+          <Icon name="gear" color={c.textSecondary} />
+        </Pressable>
+      </Row>
 
       {loading ? <Loading /> : null}
       {error ? <ErrorBox error={error} onRetry={refresh} /> : null}
 
       {data && data.inventory.skus === 0 ? (
         <Empty
-          title="Let's get your store in"
-          body="Add products and sales, import a CSV from Shopify or your spreadsheet, or load a demo store to look around."
+          title="Let's bring in your sales"
+          body="Download your sales file from eBay, Amazon, Shopify, Etsy, TikTok Shop or Excel and upload it here. We show you exactly where to click."
           action={
             <View style={{ gap: Spacing.sm, alignSelf: 'stretch' }}>
-              <Button title="Add a product" onPress={() => router.push('/product/edit')} />
-              <Button title="Import CSV" kind="secondary" onPress={() => router.push('/import')} />
-              <Button title="Load demo store" kind="secondary" onPress={seed} loading={seeding} />
+              <Button title="Import my sales (2 minutes)" onPress={() => router.push('/import')} />
+              <Button title="Just look around with a demo store" kind="secondary" onPress={seed} loading={seeding} />
+              <Button title="Add a product by hand" kind="secondary" onPress={() => router.push('/product/edit')} />
             </View>
           }
         />
@@ -64,9 +70,18 @@ export default function DashboardScreen() {
               { value: '30d', label: 'Last 30 days' },
             ]}
           />
+          {data.todo.map((t) => (
+            <Card key={t.key} style={{ gap: Spacing.sm, borderColor: c.warning }}>
+              <T style={{ fontWeight: '700' }}>{t.text}</T>
+              <Button
+                title={t.key === 'stock' ? 'Add stock counts' : 'Add costs'}
+                onPress={() => router.push({ pathname: '/stock-counts', params: { tab: t.key } })}
+              />
+            </Card>
+          ))}
           <Row style={{ flexWrap: 'wrap' }}>
             <StatTile label="Revenue" value={money(data.kpis[period].revenue, cur)} change={data.kpis[period].change.revenue} />
-            <StatTile label="Profit" value={money(data.kpis[period].profit, cur)} change={data.kpis[period].change.profit} />
+            <StatTile label="Profit after fees" value={money(data.kpis[period].profit, cur)} change={data.kpis[period].change.profit} />
           </Row>
           <Row style={{ flexWrap: 'wrap' }}>
             <StatTile label="Orders" value={num(data.kpis[period].orders)} change={data.kpis[period].change.orders} />

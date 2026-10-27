@@ -35,6 +35,9 @@ export interface Product {
   supplier: string;
   fulfilment: Fulfilment;
   image_url: string;
+  stock_known: boolean;
+  stage: 'active' | 'idea';
+  source: string;
   archived: boolean;
   created_at: string;
   // present on list/detail endpoints
@@ -44,6 +47,8 @@ export interface Product {
   last_sold_at?: string | null;
   days_of_stock?: number | null;
   margin_pct?: number | null;
+  profit_30d?: number;
+  fees_30d?: number;
 }
 
 export type StockStatus =
@@ -53,7 +58,8 @@ export type StockStatus =
   | 'healthy'
   | 'overstock'
   | 'dead_stock'
-  | 'no_demand';
+  | 'no_demand'
+  | 'stock_unknown';
 
 export type Trend = 'rising' | 'stable' | 'declining' | 'new' | 'no_sales';
 
@@ -67,6 +73,11 @@ export interface Forecast {
   trend_pct: number;
   confidence: 'high' | 'medium' | 'low';
   next_week: number;
+  accuracy: number | null;
+  tested_weeks: number;
+  models: { name: string; weight: number; wape: number }[];
+  seasonal: boolean;
+  intermittent: boolean;
 }
 
 export interface StockPlan {
@@ -76,14 +87,16 @@ export interface StockPlan {
   stockout_date: string | null;
   reorder_qty: number;
   safety_stock: number;
+  target_stock: number;
   reason: string;
   notes: string[];
 }
 
 export interface ProductDetail extends Product {
   weekly_units: number[];
-  forecast: Forecast;
-  stock_plan: StockPlan;
+  locked: boolean;
+  forecast?: Forecast;
+  stock_plan?: StockPlan;
   recent_sales: { id: number; quantity: number; unit_price: number; channel: string; sold_at: string }[];
 }
 
@@ -107,13 +120,24 @@ export interface ForecastResponse {
     next_weeks_profit: number[];
     revenue_band: { lower: number[]; upper: number[] } | null;
     trend: Trend;
+    accuracy: number | null;
+    restock_budget: { now: number; next_two_weeks: number };
   };
+  events: ShoppingEvent[];
   items: ForecastItem[];
   locked_count: number;
 }
 
+export interface ShoppingEvent {
+  date: string;
+  name: string;
+  markets: string;
+  in_days: number;
+}
+
 export interface Kpi {
   revenue: number;
+  fees: number;
   profit: number;
   units: number;
   orders: number;
@@ -135,7 +159,10 @@ export interface Dashboard {
     out_of_stock: number;
     low_stock: number;
     dead_stock: number;
+    stock_unknown: number;
+    cost_missing: number;
   };
+  todo: { key: 'stock' | 'cost'; count: number; text: string }[];
   top_sellers: Product[];
   low_stock: Product[];
   dead_stock: Product[];
@@ -158,10 +185,23 @@ export interface WeeklyBriefReport {
     summary: string;
     next_week_outlook: string;
     actions: BriefAction[];
+    adjustments: { sku: string; change_pct: number; reason: string; source_url: string }[];
+    market_notes: string[];
     risks: string[];
     opportunities: string[];
   };
+  adjusted: {
+    sku: string;
+    name: string;
+    base_next_week: number;
+    adjusted_next_week: number;
+    change_pct: number;
+    reason: string;
+    source_url: string;
+  }[];
   store_forecast: ForecastResponse['store'];
+  events: ShoppingEvent[];
+  sources: Source[];
 }
 
 export interface TrendingProduct {
@@ -175,6 +215,9 @@ export interface TrendingProduct {
   fit_with_store: string;
   how_to_sell_it: string;
   risk: string;
+  est_retail_price: number;
+  est_supplier_cost: number;
+  supplier_search: string;
   source_urls: string[];
 }
 
@@ -244,4 +287,62 @@ export interface ListingReport {
 export interface ChatTurn {
   role: 'user' | 'assistant';
   content: string;
+}
+
+// ---- Import ----
+
+export interface ImportGuide {
+  key: string;
+  name: string;
+  file_hint: string;
+  what: string;
+  steps: string[];
+  stock_tip: string;
+  tip: string;
+}
+
+export interface SampleFile {
+  key: string;
+  platform: string;
+  title: string;
+  store_name: string;
+  filename: string;
+}
+
+export interface ImportSheet {
+  sheet: string;
+  platform: string;
+  platform_name: string;
+  kind: 'orders' | 'stock';
+  columns: string[];
+  reads: { role: string; label: string; column: string }[];
+  missing: string[];
+  ready: boolean;
+  ai_mapped: boolean;
+  examples: Record<string, string | number | null>[];
+  headline: string;
+  notes: string[];
+}
+
+export interface ImportPreview {
+  job_id: number;
+  filename: string;
+  sheets: ImportSheet[];
+  ready: boolean;
+}
+
+export interface ImportResult {
+  sales_added: number;
+  duplicates_skipped: number;
+  products_created: number;
+  products_updated: number;
+  summary: string[];
+  needs_stock: { id: number; sku: string; name: string }[];
+  needs_cost: { id: number; sku: string; name: string; sell_price: number }[];
+}
+
+export interface FeeRate {
+  label: string;
+  pct: number;
+  fixed: number;
 }

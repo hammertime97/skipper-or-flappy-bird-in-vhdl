@@ -172,7 +172,7 @@ def _apply_stock(cat: _Catalogue, x: importer.Extracted, platform: str) -> None:
         cat.session.add(p)
 
 
-def _apply_orders(cat: _Catalogue, x: importer.Extracted, platform: str) -> tuple[int, int]:
+def _apply_orders(cat: _Catalogue, x: importer.Extracted, platform: str) -> tuple[int, int, int]:
     session, user = cat.session, cat.user
     existing = set(
         session.exec(select(Sale.import_key).where(Sale.user_id == user.id, Sale.import_key.is_not(None)))  # type: ignore[union-attr]
@@ -181,7 +181,7 @@ def _apply_orders(cat: _Catalogue, x: importer.Extracted, platform: str) -> tupl
     for o in x.orders:
         if o.unit_price is not None:
             prices.setdefault(o.key, []).append(o.unit_price)
-    added = dupes = 0
+    added = dupes = units = 0
     for o in x.orders:
         if o.import_key in existing:
             dupes += 1
@@ -207,7 +207,8 @@ def _apply_orders(cat: _Catalogue, x: importer.Extracted, platform: str) -> tupl
         )
         existing.add(o.import_key)
         added += 1
-    return added, dupes
+        units += o.quantity
+    return added, dupes, units
 
 
 def confirm_job(session: Session, user: User, job_id: int, overrides: list[dict] | None = None) -> dict:
@@ -249,11 +250,12 @@ def confirm_job(session: Session, user: User, job_id: int, overrides: list[dict]
     for a, x in sorted(sheets, key=lambda ax: ax[0].kind != "stock"):
         if a.kind == "stock":
             _apply_stock(cat, x, a.platform)
-    sales_added = dupes = cancelled = 0
+    sales_added = dupes = cancelled = units_added = 0
     for a, x in sheets:
         if a.kind == "orders":
-            n, d = _apply_orders(cat, x, a.platform)
+            n, d, u = _apply_orders(cat, x, a.platform)
             sales_added += n
+            units_added += u
             dupes += d
             cancelled += x.skipped_cancelled
     session.commit()
@@ -262,7 +264,7 @@ def confirm_job(session: Session, user: User, job_id: int, overrides: list[dict]
     needs_cost = [p for p in cat.products if p.cost_price <= 0 and not p.archived and p.stage == "active"]
     lines = []
     if sales_added:
-        lines.append(f"Added {sales_added:,} sales.")
+        lines.append(f"Added {sales_added:,} sales ({units_added:,} items sold).")
     if dupes:
         lines.append(f"Skipped {dupes:,} sales you had already uploaded.")
     if cat.created:

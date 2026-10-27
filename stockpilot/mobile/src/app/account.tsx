@@ -7,7 +7,7 @@ import { Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
-export default function SettingsScreen() {
+export default function AccountScreen() {
   const { user, setUser, signOut, refreshUser } = useAuth();
   const [form, setForm] = useState({
     store_name: user?.store_name ?? '',
@@ -49,8 +49,7 @@ export default function SettingsScreen() {
 
   const b = user?.billing;
   return (
-    <Screen>
-      <T kind="title">Settings</T>
+    <Screen edges={[]}>
 
       <Card style={{ gap: Spacing.md }}>
         <T kind="heading">Your store</T>
@@ -94,7 +93,9 @@ export default function SettingsScreen() {
 
       <Card style={{ gap: Spacing.sm }}>
         <T kind="heading">Data</T>
-        <Button title="Import products or sales (CSV)" kind="secondary" onPress={() => router.push('/import')} />
+        <Button title="Import sales or stock (eBay, Amazon, Shopify, Etsy, TikTok, Excel)" kind="secondary" onPress={() => router.push('/import')} />
+        <Button title="Type in stock counts and costs" kind="secondary" onPress={() => router.push('/stock-counts')} />
+        <Button title="Selling fees per platform" kind="secondary" onPress={() => router.push('/fees')} />
         <Button title="Load demo store" kind="secondary" onPress={loadDemo} />
       </Card>
 

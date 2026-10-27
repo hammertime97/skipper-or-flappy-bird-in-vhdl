@@ -16,8 +16,8 @@ const FEATURES: { title: string; body: string; href: Href; cta: string }[] = [
   {
     title: 'Trend Scout',
     body: 'Searches TikTok Shop, Amazon movers, Google Trends and competitor stores in your niche, and tells you which products are booming right now.',
-    href: '/ai/trends',
-    cta: 'Find trending products',
+    href: '/trends',
+    cta: 'Open the Trends tab',
   },
   {
     title: 'Product Check',

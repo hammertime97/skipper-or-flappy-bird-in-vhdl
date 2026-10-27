@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Linking, Pressable, View } from 'react-native';
 
-import { Working } from '@/components/ai-bits';
+import { Sources, Working } from '@/components/ai-bits';
 import { Badge, Bullets, Button, Card, Empty, ErrorBox, Loading, Row, Screen, Section, StatTile, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useAiRun } from '@/hooks/use-ai';
@@ -33,7 +33,7 @@ export default function WeeklyPlan() {
       <T kind="secondary">
         Your forecasts and stock levels, turned into this week&apos;s to-do list. Make a new plan each Monday.
       </T>
-      {running ? <Working text="Reading your sales, forecasts and stock…" /> : null}
+      {running ? <Working text="Reading your sales and forecasts, and checking upcoming events and news. This takes 1–2 minutes." /> : null}
       {error ? <ErrorBox error={error} onRetry={generate} /> : null}
       {latest.loading ? <Loading /> : null}
 
@@ -56,6 +56,35 @@ export default function WeeklyPlan() {
             <T kind="label">Outlook</T>
             <T>{report.brief.next_week_outlook}</T>
           </Card>
+          {report.adjusted?.length ? (
+            <Section title="AI forecast adjustments">
+              <T kind="muted">Changes to next week&apos;s forecast for things your sales history can&apos;t know about.</T>
+              {report.adjusted.map((a) => (
+                <Card key={a.sku} style={{ gap: 4 }}>
+                  <T style={{ fontWeight: '700' }}>{a.name}</T>
+                  <T>
+                    {Math.round(a.base_next_week)} → {Math.round(a.adjusted_next_week)} units next week ({a.change_pct > 0 ? '+' : ''}
+                    {Math.round(a.change_pct)}%)
+                  </T>
+                  <T kind="secondary">{a.reason}</T>
+                  {a.source_url ? (
+                    <Pressable onPress={() => Linking.openURL(a.source_url)} accessibilityRole="link">
+                      <T kind="muted" style={{ color: c.tint, textDecorationLine: 'underline' }}>
+                        Source
+                      </T>
+                    </Pressable>
+                  ) : null}
+                </Card>
+              ))}
+            </Section>
+          ) : null}
+          {report.brief.market_notes?.length ? (
+            <Section title="What's happening out there">
+              <Card>
+                <Bullets items={report.brief.market_notes} />
+              </Card>
+            </Section>
+          ) : null}
           <Section title="Do this week">
             {report.brief.actions.map((a, i) => (
               <Card key={i} style={{ gap: 4, borderLeftWidth: 4, borderLeftColor: a.priority === 'high' ? c.critical : a.priority === 'medium' ? c.warning : c.border }}>
@@ -82,6 +111,7 @@ export default function WeeklyPlan() {
               </Card>
             </Section>
           ) : null}
+          {report.sources?.length ? <Sources sources={report.sources} /> : null}
           <View>
             <Button title="Make a new plan" kind="secondary" onPress={generate} />
           </View>

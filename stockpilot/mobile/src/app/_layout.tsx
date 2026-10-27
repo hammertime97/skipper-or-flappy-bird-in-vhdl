@@ -38,11 +38,13 @@ function RootStack() {
           <Stack.Screen name="product/[id]" options={{ title: 'Product' }} />
           <Stack.Screen name="product/edit" options={{ title: 'Product', presentation: 'modal' }} />
           <Stack.Screen name="ai/weekly-plan" options={{ title: 'Weekly Plan' }} />
-          <Stack.Screen name="ai/trends" options={{ title: 'Trend Scout' }} />
+          <Stack.Screen name="account" options={{ title: 'Account' }} />
+          <Stack.Screen name="fees" options={{ title: 'Selling fees' }} />
+          <Stack.Screen name="stock-counts" options={{ title: 'Stock & costs' }} />
           <Stack.Screen name="ai/product-check" options={{ title: 'Product Check' }} />
           <Stack.Screen name="ai/assistant" options={{ title: 'Ask StockPilot' }} />
           <Stack.Screen name="ai/listing" options={{ title: 'Listing Writer' }} />
-          <Stack.Screen name="import" options={{ title: 'Import data', presentation: 'modal' }} />
+          <Stack.Screen name="import" options={{ title: 'Import your sales' }} />
           <Stack.Screen name="paywall" options={{ title: 'StockPilot Pro', presentation: 'modal' }} />
         </Stack.Protected>
       </Stack>

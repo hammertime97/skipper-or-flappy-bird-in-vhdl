@@ -9,6 +9,7 @@ import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { money, num, pct, shortDate } from '@/lib/format';
+import type { Forecast, ProductDetail, StockPlan } from '@/lib/types';
 
 const TREND = { rising: 'Rising', declining: 'Declining', stable: 'Stable', new: 'New product', no_sales: 'No sales yet' };
 
@@ -41,11 +42,6 @@ export default function ProductScreen() {
 
   const fc = p.forecast;
   const plan = p.stock_plan;
-  const recentWeeks = p.weekly_units.slice(-12);
-  const bars = [
-    ...recentWeeks.map((v, i) => ({ label: i === 0 ? `${recentWeeks.length} wks ago` : '', value: v })),
-    ...fc.weeks.map((v, i) => ({ label: `+${i + 1} wk`, value: v, forecast: true })),
-  ];
 
   return (
     <Screen edges={[]} refreshing={refreshing} onRefresh={refresh}>
@@ -56,41 +52,18 @@ export default function ProductScreen() {
           {p.category || 'No category'} · {p.fulfilment === 'dropship' ? 'Dropship' : 'Own stock'}
           {p.supplier ? ` · ${p.supplier}` : ''}
         </T>
-        <StatusPill status={plan.status} />
+        {plan ? <StatusPill status={plan.status} /> : null}
       </View>
 
-      <Card style={{ gap: Spacing.sm }}>
-        <T kind="label">Next 7 days forecast</T>
-        <T kind="hero">{num(fc.next_week)} units</T>
-        <T kind="secondary">
-          Likely between {num(fc.lower[0])} and {num(fc.upper[0])} · {money(fc.next_week * p.sell_price, cur)} revenue ·{' '}
-          {TREND[fc.trend]}
-          {fc.trend === 'rising' || fc.trend === 'declining' ? ` ${pct(fc.trend_pct)} vs prior 4 weeks` : ''} · {fc.confidence} confidence
-        </T>
-        <BarChart
-          data={bars}
-          readout={(d) => `${d.forecast ? `Forecast ${d.label}` : 'Week'}: ${num(d.value, 1)} units`}
-          format={(v) => num(v)}
-        />
-      </Card>
-
-      <Card style={{ gap: Spacing.sm }}>
-        <T kind="heading">Stock plan</T>
-        <T>{plan.reason}</T>
-        <Row style={{ flexWrap: 'wrap' }}>
-          <StatTile label={p.fulfilment === 'dropship' ? 'Supplier stock' : 'In stock'} value={num(p.stock_qty)} />
-          <StatTile label="Runs out" value={plan.stockout_date ? shortDate(plan.stockout_date) : 'Not soon'} />
-        </Row>
-        <Row style={{ flexWrap: 'wrap' }}>
-          <StatTile label="Suggested order" value={`${num(plan.reorder_qty)} units`} />
-          <StatTile label="Weeks of cover" value={plan.weeks_of_cover == null ? '–' : num(plan.weeks_of_cover, 1)} />
-        </Row>
-        <T kind="muted">
-          Order covers {p.lead_time_days} days supplier lead time + 2 weeks, plus {plan.safety_stock} units safety stock
-          {p.incoming_qty ? `, minus ${p.incoming_qty} already incoming` : ''}.
-        </T>
-        {plan.notes.length ? <Bullets items={plan.notes} /> : null}
-      </Card>
+      {p.locked || !fc || !plan ? (
+        <Card style={{ gap: Spacing.sm }}>
+          <T style={{ fontWeight: '700' }}>🔒 Forecast and stock plan are part of Pro</T>
+          <T kind="secondary">On the Free plan, forecasts cover your top sellers. This product is outside them.</T>
+          <Button title="See Pro" onPress={() => router.push('/paywall')} />
+        </Card>
+      ) : (
+        <ForecastBlock p={p} fc={fc} plan={plan} cur={cur} />
+      )}
 
       <Card style={{ gap: Spacing.sm }}>
         <T kind="heading">Numbers</T>
@@ -172,5 +145,61 @@ export default function ProductScreen() {
         </Card>
       ) : null}
     </Screen>
+  );
+}
+
+function ForecastBlock({ p, fc, plan, cur }: { p: ProductDetail; fc: Forecast; plan: StockPlan; cur: string }) {
+  const recentWeeks = p.weekly_units.slice(-12);
+  const bars = [
+    ...recentWeeks.map((v, i) => ({ label: i === 0 ? `${recentWeeks.length} wks ago` : '', value: v })),
+    ...fc.weeks.map((v, i) => ({ label: `+${i + 1} wk`, value: v, forecast: true })),
+  ];
+  return (
+    <>
+      <Card style={{ gap: Spacing.sm }}>
+        <T kind="label">Next 7 days forecast</T>
+        <T kind="hero">{num(fc.next_week)} units</T>
+        <T kind="secondary">
+          Likely between {num(fc.lower[0])} and {num(fc.upper[0])} · {money(fc.next_week * p.sell_price, cur)} revenue ·{' '}
+          {TREND[fc.trend]}
+          {fc.trend === 'rising' || fc.trend === 'declining' ? ` ${pct(fc.trend_pct)} vs prior 4 weeks` : ''}
+        </T>
+        <T kind="muted">
+          {fc.accuracy != null
+            ? `Tested on the last ${fc.tested_weeks} weeks of your sales: ${Math.round(fc.accuracy * 100)}% accurate.`
+            : 'Not enough history to test this forecast yet. It gets sharper after 8 weeks of sales.'}
+          {fc.seasonal ? ' Uses the same time last year.' : ''}
+        </T>
+        <BarChart
+          data={bars}
+          readout={(d) => `${d.forecast ? `Forecast ${d.label}` : 'Week'}: ${num(d.value, 1)} units`}
+          format={(v) => num(v)}
+        />
+      </Card>
+
+      <Card style={{ gap: Spacing.sm }}>
+        <T kind="heading">Stock plan</T>
+        <T>{plan.reason}</T>
+        {plan.status === 'stock_unknown' ? (
+          <Button title="Add stock counts" onPress={() => router.push('/stock-counts')} />
+        ) : (
+          <>
+            <Row style={{ flexWrap: 'wrap' }}>
+              <StatTile label={p.fulfilment === 'dropship' ? 'Supplier stock' : 'In stock'} value={num(p.stock_qty)} />
+              <StatTile label="Runs out" value={plan.stockout_date ? shortDate(plan.stockout_date) : 'Not soon'} />
+            </Row>
+            <Row style={{ flexWrap: 'wrap' }}>
+              <StatTile label="Suggested order" value={`${num(plan.reorder_qty)} units`} />
+              <StatTile label="Weeks of cover" value={plan.weeks_of_cover == null ? '–' : num(plan.weeks_of_cover, 1)} />
+            </Row>
+            <T kind="muted">
+              The order covers {p.lead_time_days} days supplier lead time + 2 weeks of sales, plus {plan.safety_stock} units
+              safety stock{p.incoming_qty ? `, minus ${p.incoming_qty} already on order` : ''}.
+            </T>
+          </>
+        )}
+        {plan.notes.length ? <Bullets items={plan.notes} /> : null}
+      </Card>
+    </>
   );
 }
