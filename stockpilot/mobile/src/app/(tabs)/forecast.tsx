@@ -8,7 +8,7 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useApi } from '@/hooks/use-api';
 import { useTheme } from '@/hooks/use-theme';
 import { api } from '@/lib/api';
-import { money, num, pct } from '@/lib/format';
+import { money, num, orderWhen, pct } from '@/lib/format';
 import type { ForecastItem, StockStatus } from '@/lib/types';
 
 const TREND_LABEL = { rising: '▲ Rising', declining: '▼ Declining', stable: '→ Stable', new: '★ New', no_sales: '– No sales' };
@@ -170,6 +170,7 @@ function ForecastRow({ item, cur }: { item: ForecastItem; cur: string }) {
             <View style={{ alignItems: 'flex-end' }}>
               <T kind="label">Order</T>
               <T style={{ fontWeight: '800' }}>{num(plan.reorder_qty)} units</T>
+              {plan.order_by ? <T kind="muted">{orderWhen(plan.order_by)}</T> : null}
             </View>
           ) : null}
         </Row>

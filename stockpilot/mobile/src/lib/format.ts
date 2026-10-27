@@ -32,3 +32,10 @@ export function ago(iso: string): string {
   if (hours < 48) return `${hours} h ago`;
   return `${Math.round(hours / 24)} days ago`;
 }
+
+/** "today" when the date has passed or is today, else "by Tue 3 Nov". */
+export function orderWhen(iso: string): string {
+  const today = new Date().toISOString().slice(0, 10);
+  if (iso <= today) return 'today';
+  return `by ${new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })}`;
+}

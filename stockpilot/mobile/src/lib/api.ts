@@ -4,6 +4,9 @@ import type {
   ImportGuide,
   ImportPreview,
   ImportResult,
+  Insights,
+  SmartPlan,
+  TrendLibrary,
   SampleFile,
   ChatTurn,
   Dashboard,
@@ -127,6 +130,9 @@ export const api = {
   startSelling: (id: number, body: { sku?: string; sell_price?: number; cost_price?: number; stock_qty?: number; fulfilment?: string }) =>
     request<Product>('POST', `/ai/ideas/${id}/start-selling`, body),
   removeIdea: (id: number) => request<void>('DELETE', `/ai/ideas/${id}`),
+  insights: () => request<Insights>('GET', '/insights'),
+  plan: () => request<SmartPlan>('GET', '/plan'),
+  trendLibrary: () => request<TrendLibrary>('GET', '/trends/library'),
   seedDemo: () => request<{ products: number; sales: number }>('POST', '/demo/seed'),
 
   weeklyBrief: () => request<WeeklyBriefReport>('POST', '/ai/weekly-brief'),

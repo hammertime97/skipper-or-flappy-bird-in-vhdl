@@ -8,7 +8,7 @@ const TABS: { name: string; title: string; icon: IconName }[] = [
   { name: 'inventory', title: 'Stock', icon: 'box' },
   { name: 'forecast', title: 'Forecast', icon: 'chart' },
   { name: 'trends', title: 'Trends', icon: 'trend' },
-  { name: 'ai', title: 'AI', icon: 'spark' },
+  { name: 'ai', title: 'Tools', icon: 'spark' },
 ];
 
 export default function TabLayout() {

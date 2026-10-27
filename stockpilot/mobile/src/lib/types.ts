@@ -90,6 +90,8 @@ export interface StockPlan {
   target_stock: number;
   reason: string;
   notes: string[];
+  /** Last day to place the order so stock arrives before it runs out (ISO date). */
+  order_by: string | null;
 }
 
 export interface ProductDetail extends Product {
@@ -345,4 +347,59 @@ export interface FeeRate {
   label: string;
   pct: number;
   fixed: number;
+}
+
+// ----- insights that need no AI
+
+export interface FocusRow {
+  id: number;
+  sku: string;
+  name: string;
+  units: number;
+  revenue: number;
+  profit: number;
+  cost_known: boolean;
+  share: number;
+  group: 'A' | 'B' | 'C' | 'losing';
+}
+
+export interface BundlePair {
+  a: { id: number; name: string };
+  b: { id: number; name: string };
+  orders_together: number;
+  lift: number;
+  tip: string;
+}
+
+export interface Insights {
+  focus: { days: number; total_profit: number; summary: string; missing_cost: number; items: FocusRow[] };
+  bundles: { days: number; orders: number; multi_item_orders: number; pairs: BundlePair[]; note: string };
+}
+
+export interface SmartPlan {
+  headline: string;
+  summary: string;
+  next_week_outlook: string;
+  actions: BriefAction[];
+  made_by: 'numbers';
+  store_forecast: ForecastResponse['store'];
+  events: ShoppingEvent[];
+}
+
+export interface LibraryItem {
+  name: string;
+  why: string;
+  signal: string;
+  momentum: 'exploding' | 'rising' | 'steady';
+  competition: 'low' | 'medium' | 'high';
+  price_hint?: string;
+  supplier_search: string;
+  source: string;
+}
+
+export interface TrendLibrary {
+  researched_on: string;
+  match: string | null;
+  niches: { key: string; name: string; keywords: string[]; summary: string; items: LibraryItem[] }[];
+  holiday: { name: string; summary: string; points: { text: string; source: string }[] };
 }

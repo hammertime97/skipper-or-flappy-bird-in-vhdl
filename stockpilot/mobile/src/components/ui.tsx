@@ -61,16 +61,23 @@ export function T({
   kind = 'body',
   style,
   numberOfLines,
+  onPress,
 }: {
   children: ReactNode;
   kind?: TextKind;
   style?: StyleProp<TextStyle>;
   numberOfLines?: number;
+  /** Makes the text a link. */
+  onPress?: () => void;
 }) {
   const c = useTheme();
   const color = kind === 'secondary' || kind === 'label' ? c.textSecondary : kind === 'muted' ? c.textMuted : c.text;
   return (
-    <Text numberOfLines={numberOfLines} style={[textStyles[kind], { color }, style]}>
+    <Text
+      numberOfLines={numberOfLines}
+      onPress={onPress}
+      accessibilityRole={onPress ? 'link' : undefined}
+      style={[textStyles[kind], { color }, style]}>
       {children}
     </Text>
   );

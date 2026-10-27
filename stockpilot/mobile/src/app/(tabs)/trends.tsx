@@ -1,16 +1,16 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Linking, View } from 'react-native';
 
 import { KV, Sources, Working } from '@/components/ai-bits';
-import { Badge, Bullets, Button, Card, ErrorBox, Input, Row, Screen, Section, T } from '@/components/ui';
+import { Badge, Bullets, Button, Card, Chips, ErrorBox, Input, Row, Screen, Section, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useAiRun } from '@/hooks/use-ai';
 import { useApi } from '@/hooks/use-api';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ago, money } from '@/lib/format';
-import type { Product, TrendingProduct, TrendReport } from '@/lib/types';
+import type { LibraryItem, Product, TrendingProduct, TrendLibrary, TrendReport } from '@/lib/types';
 
 const MOMENTUM = { exploding: '🚀 Exploding', rising: '▲ Rising', steady: '→ Steady' };
 
@@ -23,6 +23,7 @@ export default function TrendsScreen() {
   const [editing, setEditing] = useState(false);
   const latest = useApi(() => api.reports<TrendReport>('trend_scout', 1));
   const ideas = useApi(() => api.ideas());
+  const lib = useApi(api.trendLibrary);
   const [fresh, setFresh] = useState<TrendReport | null>(null);
   const { run, running, error } = useAiRun(api.trendScout);
   const report = fresh ?? latest.data?.[0] ?? null;
@@ -37,7 +38,7 @@ export default function TrendsScreen() {
     }
   };
 
-  const addToStore = async (tp: TrendingProduct) => {
+  const addToStore = async (tp: Pick<TrendingProduct, 'name' | 'supplier_search'> & { est_retail_price?: number; est_supplier_cost?: number }, fromAi = true) => {
     setAddError(null);
     try {
       await api.addIdea({
@@ -45,7 +46,7 @@ export default function TrendsScreen() {
         est_price: tp.est_retail_price || undefined,
         est_cost: tp.est_supplier_cost || undefined,
         note: tp.supplier_search,
-        report_id: report?.id,
+        report_id: fromAi ? report?.id : undefined,
       });
       setAdded({ ...added, [tp.name]: true });
       await ideas.refresh();
@@ -56,16 +57,35 @@ export default function TrendsScreen() {
   };
 
   const showForm = !report || editing;
+  const have = (name: string) => added[name] || !!ideas.data?.some((p) => p.name.toLowerCase() === name.toLowerCase());
 
   return (
-    <Screen refreshing={latest.refreshing} onRefresh={() => Promise.all([latest.refresh(), ideas.refresh()])}>
+    <Screen refreshing={latest.refreshing} onRefresh={() => Promise.all([latest.refresh(), ideas.refresh(), lib.refresh()])}>
       <View style={{ gap: 4 }}>
         <T kind="title">Trending now</T>
         <T kind="secondary">
-          We search TikTok Shop, Amazon best-sellers, Google Trends and competitor stores for your niche, and tell you
-          what to add to your store.
+          What&apos;s selling in each niche right now, from TikTok Shop and Amazon sales trackers and seller reports. Tap “Add
+          to my store” to save a product to your ideas.
         </T>
       </View>
+
+      {lib.error ? <ErrorBox error={lib.error} onRetry={lib.refresh} /> : null}
+      {addError ? <ErrorBox error={addError} /> : null}
+      {lib.data ? (
+        <Library
+          lib={lib.data}
+          have={have}
+          onAdd={(it) => addToStore({ name: it.name, supplier_search: it.supplier_search, est_retail_price: priceFromHint(it.price_hint) }, false)}
+        />
+      ) : null}
+
+      {ideas.data && ideas.data.length ? <IdeaList ideas={ideas.data} cur={cur} onChange={ideas.refresh} /> : null}
+
+      <Section title="Your exact niche" right={<Badge text="Pro · AI" tone="tint" />}>
+        <T kind="secondary">
+          AI searches TikTok Shop, Amazon best-sellers, Google Trends and competitor stores for exactly what you sell.
+        </T>
+      </Section>
 
       {showForm ? (
         <Card style={{ gap: Spacing.md }}>
@@ -88,15 +108,12 @@ export default function TrendsScreen() {
       {running ? <Working text="Searching TikTok Shop, Amazon, Google Trends and competitor stores…" /> : null}
       {error ? <ErrorBox error={error} onRetry={scan} /> : null}
 
-      {ideas.data && ideas.data.length ? <IdeaList ideas={ideas.data} cur={cur} onChange={ideas.refresh} /> : null}
-
       {report && !running ? (
         <>
           <Card>
             <T>{report.report.niche_summary}</T>
           </Card>
           <Section title="Add these to your store">
-            {addError ? <ErrorBox error={addError} /> : null}
             {report.report.trending_products.map((tp, i) => (
               <Card key={tp.name} style={{ gap: Spacing.sm }}>
                 <T kind="heading">
@@ -116,9 +133,9 @@ export default function TrendsScreen() {
                 <KV k="Risk" v={tp.risk} />
                 <Row>
                   <Button
-                    title={added[tp.name] ? 'Added to your ideas ✓' : 'Add to my store'}
+                    title={have(tp.name) ? 'In your ideas ✓' : 'Add to my store'}
                     onPress={() => addToStore(tp)}
-                    disabled={added[tp.name]}
+                    disabled={have(tp.name)}
                     style={{ flex: 1 }}
                   />
                   <Button
@@ -155,6 +172,73 @@ export default function TrendsScreen() {
         </>
       ) : null}
     </Screen>
+  );
+}
+
+const priceFromHint = (h?: string) => {
+  const m = (h ?? '').match(/(\d+(?:\.\d+)?)/);
+  return m ? Number(m[1]) : undefined;
+};
+
+/** Researched trends for every niche: works for everyone, no AI request needed. */
+function Library({ lib, have, onAdd }: { lib: TrendLibrary; have: (name: string) => boolean; onAdd: (it: LibraryItem) => void }) {
+  const [picked, setPicked] = useState<string | null>(null);
+  const key = picked ?? lib.match ?? lib.niches[0].key;
+  const niche = lib.niches.find((n) => n.key === key) ?? lib.niches[0];
+  const ordered = [...lib.niches].sort((a, b) => Number(b.key === lib.match) - Number(a.key === lib.match));
+  const researched = new Date(`${lib.researched_on}T12:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  const host = (u: string) => u.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+  return (
+    <>
+      <Chips
+        value={niche.key}
+        onChange={setPicked}
+        options={ordered.map((n) => ({ value: n.key, label: n.key === lib.match ? `${n.name} · yours` : n.name }))}
+      />
+      <Card style={{ gap: Spacing.xs }}>
+        <T>{niche.summary}</T>
+        <T kind="muted">
+          Researched {researched}. Sales figures come from third-party trackers, which estimate: treat them as signals to check, not guarantees.
+        </T>
+      </Card>
+      {niche.items.map((it) => (
+        <Card key={it.name} style={{ gap: Spacing.sm }}>
+          <T kind="heading">{it.name}</T>
+          <Row style={{ flexWrap: 'wrap' }}>
+            <Badge text={MOMENTUM[it.momentum]} tone="tint" />
+            <Badge text={`${it.competition} competition`} />
+            {it.price_hint ? <Badge text={it.price_hint} /> : null}
+          </Row>
+          <T>{it.why}</T>
+          <KV k="What the data shows" v={it.signal} />
+          <KV k="Search suppliers for" v={it.supplier_search} />
+          <T kind="muted" style={{ textDecorationLine: 'underline' }} onPress={() => Linking.openURL(it.source)}>
+            Source: {host(it.source)} ↗
+          </T>
+          <Row>
+            <Button title={have(it.name) ? 'In your ideas ✓' : 'Add to my store'} onPress={() => onAdd(it)} disabled={have(it.name)} style={{ flex: 1 }} />
+            <Button
+              title="Check it"
+              kind="secondary"
+              onPress={() => router.push({ pathname: '/calculator', params: { name: it.name, price: String(priceFromHint(it.price_hint) ?? '') } })}
+            />
+          </Row>
+        </Card>
+      ))}
+      <Section title={lib.holiday.name}>
+        <Card style={{ gap: Spacing.sm }}>
+          <T>{lib.holiday.summary}</T>
+          {lib.holiday.points.map((p) => (
+            <T key={p.text} kind="secondary">
+              • {p.text}{' '}
+              <T kind="muted" style={{ textDecorationLine: 'underline' }} onPress={() => Linking.openURL(p.source)}>
+                {host(p.source)} ↗
+              </T>
+            </T>
+          ))}
+        </Card>
+      </Section>
+    </>
   );
 }
 

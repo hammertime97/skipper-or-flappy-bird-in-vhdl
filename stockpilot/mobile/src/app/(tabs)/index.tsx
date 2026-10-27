@@ -4,6 +4,7 @@ import { Pressable, View } from 'react-native';
 
 import { BarChart } from '@/components/charts';
 import { Icon } from '@/components/icons';
+import { InsightSections, PlanCard } from '@/components/insights';
 import { Button, Card, Chips, Empty, ErrorBox, Loading, Row, Screen, Section, StatTile, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useApi } from '@/hooks/use-api';
@@ -17,6 +18,8 @@ export default function DashboardScreen() {
   const { user } = useAuth();
   const c = useTheme();
   const { data, error, loading, refreshing, refresh } = useApi(api.dashboard);
+  const plan = useApi(api.plan);
+  const insights = useApi(api.insights);
   const [period, setPeriod] = useState<'7d' | '30d'>('7d');
   const [seeding, setSeeding] = useState(false);
   const cur = data?.currency ?? user?.currency ?? 'USD';
@@ -25,14 +28,14 @@ export default function DashboardScreen() {
     setSeeding(true);
     try {
       await api.seedDemo();
-      await refresh();
+      await Promise.all([refresh(), plan.refresh(), insights.refresh()]);
     } finally {
       setSeeding(false);
     }
   };
 
   return (
-    <Screen refreshing={refreshing} onRefresh={refresh}>
+    <Screen refreshing={refreshing} onRefresh={() => Promise.all([refresh(), plan.refresh(), insights.refresh()])}>
       <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <View style={{ flex: 1 }}>
           <T kind="muted">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</T>
@@ -79,6 +82,7 @@ export default function DashboardScreen() {
               />
             </Card>
           ))}
+          {plan.data ? <PlanCard plan={plan.data} /> : null}
           <Row style={{ flexWrap: 'wrap' }}>
             <StatTile label="Revenue" value={money(data.kpis[period].revenue, cur)} change={data.kpis[period].change.revenue} />
             <StatTile label="Profit after fees" value={money(data.kpis[period].profit, cur)} change={data.kpis[period].change.profit} />
@@ -121,6 +125,8 @@ export default function DashboardScreen() {
           <Section title="Top sellers (30 days)">
             <ProductList products={data.top_sellers} cur={cur} detail={(p) => `${money(p.revenue_30d ?? 0, cur)} · ${p.units_30d} sold`} />
           </Section>
+
+          {insights.data ? <InsightSections data={insights.data} cur={cur} /> : null}
 
           {data.dead_stock.length ? (
             <Section title="Not selling">

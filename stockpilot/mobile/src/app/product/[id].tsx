@@ -6,9 +6,10 @@ import { BarChart } from '@/components/charts';
 import { Bullets, Button, Card, ErrorBox, Input, Loading, Row, Screen, StatTile, StatusPill, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useApi } from '@/hooks/use-api';
+import { useTheme } from '@/hooks/use-theme';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { money, num, pct, shortDate } from '@/lib/format';
+import { money, num, orderWhen, pct, shortDate } from '@/lib/format';
 import type { Forecast, ProductDetail, StockPlan } from '@/lib/types';
 
 const TREND = { rising: 'Rising', declining: 'Declining', stable: 'Stable', new: 'New product', no_sales: 'No sales yet' };
@@ -149,6 +150,7 @@ export default function ProductScreen() {
 }
 
 function ForecastBlock({ p, fc, plan, cur }: { p: ProductDetail; fc: Forecast; plan: StockPlan; cur: string }) {
+  const c = useTheme();
   const recentWeeks = p.weekly_units.slice(-12);
   const bars = [
     ...recentWeeks.map((v, i) => ({ label: i === 0 ? `${recentWeeks.length} wks ago` : '', value: v })),
@@ -179,6 +181,11 @@ function ForecastBlock({ p, fc, plan, cur }: { p: ProductDetail; fc: Forecast; p
 
       <Card style={{ gap: Spacing.sm }}>
         <T kind="heading">Stock plan</T>
+        {plan.order_by ? (
+          <T style={{ fontWeight: '700', color: plan.status === 'low' ? c.text : c.critical }}>
+            Order {num(plan.reorder_qty)} units {orderWhen(plan.order_by)}
+          </T>
+        ) : null}
         <T>{plan.reason}</T>
         {plan.status === 'stock_unknown' ? (
           <Button title="Add stock counts" onPress={() => router.push('/stock-counts')} />

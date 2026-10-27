@@ -35,12 +35,28 @@ An AI co-pilot for e-commerce and dropshipping sellers, built as an Android app 
 
 How accurate is it? On 200+ simulated products, the forecasts were about 70% accurate week to week. That is close to the limit, because a lot of week-to-week variation in small-shop sales is pure chance. The blend's advantages are reliability across very different products, honest ranges, use of last year, and telling the seller how much to trust each number.
 
-**4. AI features (Claude)**
+**4. Works without AI, for everyone**
+
+Every screen works instantly with no AI request, on every plan. AI adds a second opinion where it helps.
 
 | Feature | What the seller gets |
 |---|---|
-| **Weekly Plan** | Claude searches the web for upcoming events, news and viral moments around the seller's products. It suggests bounded forecast adjustments (each with a reason and a source), then writes a prioritised to-do list: what to reorder and how many, what to promote, what to clear. The statistical forecast is always shown next to the adjusted one. |
-| **Trends tab (Trend Scout)** | Searches TikTok Shop, Amazon best-sellers, Google Trends and competitor stores for the seller's niche. Recommends 4–8 products with evidence, momentum, competition, prices, what to search for on supplier sites, and sources. **"Add to my store"** saves a product to an ideas list; "Start selling" moves it into the inventory. |
+| **Weekly Plan** | A prioritised to-do list from the numbers: what to reorder and the **last day to order** so stock arrives before it runs out, what to push, what to clear (with a bundle partner), and which big shopping event to prepare for. |
+| **Your money makers** | 80/20 view: the few products that make most of the profit (after cost and fees), and any product that loses money. |
+| **Bought together** | Pairs of products customers buy in the same order, more often than chance. Use them for bundles and cross-selling. |
+| **Profit & ads calculator** | Profit per sale after product cost, shipping and the platform's fee; the most you can spend on ads per sale; break-even ROAS; and the price for a 30% margin. |
+| **Trends library** | Researched trending products for 9 niches (pets, kitchen, beauty, fitness, tech, jewelry, home decor, baby, car & outdoor) with momentum, competition, what the data shows, what to search for on supplier sites, and a source link. The seller's niche is matched automatically. "Add to my store" works here too. |
+
+The trends library was researched on 27 Oct 2026 (`backend/app/trend_library.py`) and needs refreshing every month or two. Sales figures in it come from third-party trackers, which estimate, so the app presents them as signals to check.
+
+**5. AI features (Claude)**
+
+AI runs on StockPilot's own servers with StockPilot's API key, so sellers never need a Claude account.
+
+| Feature | What the seller gets |
+|---|---|
+| **Weekly Plan: AI second opinion** | Claude searches the web for upcoming events, news and viral moments around the seller's products. It suggests bounded forecast adjustments (each with a reason and a source), then writes a prioritised to-do list: what to reorder and how many, what to promote, what to clear. The statistical forecast is always shown next to the adjusted one. |
+| **Trends tab: live Trend Scout** | For the seller's exact niche, searches TikTok Shop, Amazon best-sellers, Google Trends and competitor stores for the seller's niche. Recommends 4–8 products with evidence, momentum, competition, prices, what to search for on supplier sites, and sources. **"Add to my store"** saves a product to an ideas list; "Start selling" moves it into the inventory. |
 | **Product Check** | "Should I sell this?" Returns go / test small / skip, with demand, competition and margin scores, red flags and a cheap test plan. |
 | **Ask StockPilot** | A chat that answers questions by looking up the seller's live data. |
 | **Listing Writer** | Title, bullets, description, keywords and hashtags for Shopify, TikTok Shop, Amazon, eBay, Etsy or WooCommerce. |
@@ -52,7 +68,7 @@ How accurate is it? On 200+ simulated products, the forecasts were about 70% acc
 - All requests turn on Anthropic's server-side fallback (`fallbacks: "default"`), so a request a safety filter declines is retried on another model.
 
 **Free vs Pro**
-- Free: dashboard, stock and import; forecasts for the top 10 products (also enforced on product pages); 3 AI requests a month.
+- Free: dashboard, stock, import, the weekly to-do plan, money makers, bundles, calculator and trends library; forecasts for the top 10 products (also enforced on product pages); 3 AI requests a month.
 - Pro: forecasts for every product and up to 400 AI requests a month.
 - Set the free limits with `FREE_AI_CALLS_PER_MONTH` and `FREE_FORECAST_PRODUCTS`. The Pro cap is `PRO_AI_CALLS_PER_MONTH` in `backend/app/billing.py`.
 
@@ -66,14 +82,16 @@ stockpilot/
 │   ├── app/guides.py           step-by-step download instructions per platform
 │   ├── app/forecasting.py      tested forecast blend, stock planning, shopping calendar
 │   ├── app/fees.py             selling fees per channel
+│   ├── app/insights.py         money makers (80/20), bought together, weekly to-do plan, profit calculator
+│   ├── app/trend_library.py    researched trending products per niche (no AI)
 │   ├── app/ai/                 weekly_brief, trend_scout, product_check, assistant, listing, column_mapper
-│   └── tests/                  47 tests (importer on every sample file, forecasting, API, AI flows with Claude faked)
+│   └── tests/                  52 tests (importer on every sample file, forecasting, API, AI flows with Claude faked)
 ├── mobile/    Expo / React Native app (Android), Expo Router
 ├── preview/   self-contained web preview: the same importer and forecasting ported to JavaScript
 └── docs/      screenshots, sample (dummy) files
 ```
 
-**The web preview** (`preview/`) runs the import, dashboard and forecasting entirely in the browser. In Claude, it uses the viewer's own Claude account for the AI features. It reuses the backend's tables, and `parity-check.js` confirms `engine.js` gives the same results as the Python code on every sample file:
+**The web preview** (`preview/`) runs the import, dashboard, forecasting, insights and trends library entirely in the browser, with no account and no AI needed. Its optional "Check with AI" buttons work when the page is opened inside Claude. It reuses the backend's tables, and `parity-check.js` confirms `engine.js` gives the same results as the Python code on every sample file and on the money makers, bundles and calculator:
 ```bash
 python preview/build_preview.py && (cd preview && npm i xlsx@0.18.5 && node parity-check.js)
 ```
@@ -90,7 +108,7 @@ pip install -r requirements-dev.txt
 cp .env.example .env   # fill in ANTHROPIC_API_KEY and JWT_SECRET
 set -a && . ./.env && set +a
 uvicorn app.main:app --reload --port 8000
-pytest                 # 47 tests, no API key needed
+pytest                 # 52 tests, no API key needed
 ```
 
 **App**

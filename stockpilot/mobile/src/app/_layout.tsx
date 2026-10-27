@@ -42,6 +42,7 @@ function RootStack() {
           <Stack.Screen name="fees" options={{ title: 'Selling fees' }} />
           <Stack.Screen name="stock-counts" options={{ title: 'Stock & costs' }} />
           <Stack.Screen name="ai/product-check" options={{ title: 'Product Check' }} />
+          <Stack.Screen name="calculator" options={{ title: 'Profit & ads calculator' }} />
           <Stack.Screen name="ai/assistant" options={{ title: 'Ask StockPilot' }} />
           <Stack.Screen name="ai/listing" options={{ title: 'Listing Writer' }} />
           <Stack.Screen name="import" options={{ title: 'Import your sales' }} />

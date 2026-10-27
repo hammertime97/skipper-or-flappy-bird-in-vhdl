@@ -6,18 +6,27 @@ import { Badge, Button, Card, Row, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 
-const FEATURES: { title: string; body: string; href: Href; cta: string }[] = [
+const FEATURES: { title: string; body: string; href: Href; cta: string; instant?: boolean }[] = [
   {
     title: 'Weekly Plan',
-    body: 'Your forecasts turned into a to-do list: what to reorder, what to push, what to clear, and how much next week should bring in.',
+    body: 'Your forecasts turned into a to-do list: what to reorder and by which day, what to push, what to clear. AI can add a second opinion.',
     href: '/ai/weekly-plan',
     cta: 'Open this week’s plan',
+    instant: true,
   },
   {
-    title: 'Trend Scout',
-    body: 'Searches TikTok Shop, Amazon movers, Google Trends and competitor stores in your niche, and tells you which products are booming right now.',
+    title: 'Profit & ads calculator',
+    body: 'What one sale really earns after product cost, shipping and platform fees, and how much you can spend on ads before you lose money.',
+    href: '/calculator',
+    cta: 'Work out my profit',
+    instant: true,
+  },
+  {
+    title: 'Trending products',
+    body: 'Researched trends for 9 niches, ready to add to your store. Pro adds a live AI search for your exact niche.',
     href: '/trends',
     cta: 'Open the Trends tab',
+    instant: true,
   },
   {
     title: 'Product Check',
@@ -50,8 +59,8 @@ export default function AIScreen() {
   return (
     <Screen>
       <View>
-        <T kind="title">AI tools</T>
-        <T kind="secondary">Built on your real sales data and live web research.</T>
+        <T kind="title">Tools</T>
+        <T kind="secondary">Built on your real sales data. The first three work instantly on every plan; the AI tools add live web research.</T>
       </View>
       {b ? (
         <Card style={{ gap: Spacing.sm }}>
@@ -64,7 +73,10 @@ export default function AIScreen() {
       ) : null}
       {FEATURES.map((f) => (
         <Card key={f.title} style={{ gap: Spacing.sm }} onPress={() => router.push(f.href)}>
-          <T kind="heading">{f.title}</T>
+          <Row style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <T kind="heading">{f.title}</T>
+            <Badge text={f.instant ? 'Instant · no AI needed' : 'AI'} tone={f.instant ? 'good' : 'tint'} />
+          </Row>
           <T kind="secondary">{f.body}</T>
           <T style={{ fontWeight: '700' }}>{f.cta} →</T>
         </Card>
