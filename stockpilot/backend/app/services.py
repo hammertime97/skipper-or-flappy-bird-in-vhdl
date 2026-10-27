@@ -106,7 +106,13 @@ def dashboard(session: Session, user: User, now: datetime | None = None) -> dict
     stats = product_stats(products, sales, now)
     top = sorted(products, key=lambda p: stats[p.id]["revenue_30d"], reverse=True)[:5]
     low = sorted(
-        (p for p in products if stats[p.id]["days_of_stock"] is not None and stats[p.id]["days_of_stock"] <= max(14, p.lead_time_days + 7)),
+        (
+            p
+            for p in products
+            if p.stock_qty > 0
+            and stats[p.id]["days_of_stock"] is not None
+            and stats[p.id]["days_of_stock"] <= max(14, p.lead_time_days + 7)
+        ),
         key=lambda p: stats[p.id]["days_of_stock"],
     )
     out_of_stock = [p for p in products if p.stock_qty <= 0 and stats[p.id]["units_30d"] > 0]

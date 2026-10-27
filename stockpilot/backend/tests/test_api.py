@@ -57,6 +57,8 @@ def test_demo_seed_and_forecasts_free_limit(client, auth):
     assert fc["store"]["next_weeks_revenue"][0] > 0
     dash = client.get("/dashboard", headers=h).json()
     assert dash["top_sellers"] and dash["kpis"]["30d"]["orders"] > 0
+    assert dash["inventory"]["out_of_stock"] == 1
+    assert "PET-003" not in {p["sku"] for p in dash["low_stock"]}  # sold out is not "running low"
 
 
 def test_revenuecat_webhook_upgrades_and_expires(client, auth):
