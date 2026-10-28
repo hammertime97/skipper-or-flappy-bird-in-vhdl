@@ -1,0 +1,131 @@
+# Builds an installable StockPilot APK, taps through it on an Android emulator, and
+# publishes it as a GitHub release so it can be downloaded straight to a phone.
+name: StockPilot Android test build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/serene-volta-xodopm]
+    paths:
+      - stockpilot/mobile/**
+      - .github/workflows/stockpilot-android.yml
+
+concurrency:
+  group: stockpilot-android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: stockpilot/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space for the native build
+        working-directory: .
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /usr/share/swift "$AGENT_TOOLSDIRECTORY/CodeQL" && df -h /
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: stockpilot/mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck and lint
+        run: npx tsc --noEmit && npx expo lint
+
+      - name: Generate the Android project
+        run: npx expo prebuild --platform android --no-install --clean
+        env:
+          CI: 1
+
+      - name: Build the APK
+        working-directory: stockpilot/mobile/android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64 -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1g"
+
+      - name: Collect the APK
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/StockPilot-test.apk"
+          ls -la "$GITHUB_WORKSPACE/StockPilot-test.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StockPilot-test-apk
+          path: StockPilot-test.apk
+          retention-days: 30
+
+  smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: StockPilot-test-apk
+
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Tap through the app on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash stockpilot/mobile/scripts/smoke-test.sh StockPilot-test.apk smoke
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-test-screens
+          path: smoke/
+          retention-days: 30
+
+  release:
+    needs: [build, smoke-test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: StockPilot-test-apk
+
+      - name: Publish the APK as a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="stockpilot-test-${{ github.run_number }}"
+          gh release create "$tag" StockPilot-test.apk \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --prerelease \
+            --title "StockPilot test build ${{ github.run_number }}" \
+            --notes "Android test build of StockPilot, made from commit ${{ github.sha }}.
+
+          Install: open this page on your Android phone, tap StockPilot-test.apk, then Open. If Android asks, allow your browser to install apps.
+
+          Tap **Start on this phone** to use it without an account: everything runs on the phone. AI features need the StockPilot server, which isn't connected in this build. Subscriptions can be switched between Free and Pro for testing.
+
+          This build was installed and tapped through on an Android 14 emulator before publishing."
