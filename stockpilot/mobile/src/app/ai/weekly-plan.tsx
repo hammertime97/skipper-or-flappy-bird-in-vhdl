@@ -1,5 +1,6 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
-import { Linking, Pressable } from 'react-native';
+import { Linking, Pressable, Share } from 'react-native';
 
 import { Sources, Working } from '@/components/ai-bits';
 import { ActionCard } from '@/components/insights';
@@ -29,6 +30,12 @@ export default function WeeklyPlan() {
   };
 
   const plan = smart.data;
+  const sharePlan = () => {
+    if (!plan) return;
+    const lines = [`This week's plan${user?.store_name ? ` for ${user.store_name}` : ''}`, '', plan.summary, '', ...plan.actions.map((a) => `• ${a.title}`)];
+    Share.share({ message: lines.join('\n') }).catch(() => {});
+  };
+  const hasOrders = !!plan?.actions.some((a) => a.kind === 'reorder' || a.kind === 'restock_urgent');
 
   return (
     <Screen edges={[]} refreshing={smart.refreshing} onRefresh={smart.refresh}>
@@ -61,6 +68,8 @@ export default function WeeklyPlan() {
               <Empty title="All clear ✓" body="Stock covers expected sales on every product." />
             )}
           </Section>
+          {hasOrders ? <Button title="Draft my supplier orders" onPress={() => router.push('/orders')} /> : null}
+          <Button title="Share this plan" kind="secondary" onPress={sharePlan} />
         </>
       ) : null}
 

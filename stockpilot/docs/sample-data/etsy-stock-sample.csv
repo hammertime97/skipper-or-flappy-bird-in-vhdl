@@ -1,6 +1,6 @@
-SKU,Product,Stock,Cost,Price,Supplier days
-,Personalized Initial Necklace Gold Filled,0,9.00,38.00,5
-LG-HOOP,Tiny Huggie Hoop Earrings Sterling Silver,0,5.50,26.00,5
-,Birthstone Stacking Ring Dainty,0,7.20,32.00,5
-LG-CHARM,Custom Pet Portrait Charm,0,11.00,45.00,7
-,Pearl Drop Bridal Earrings,0,10.50,42.00,5
+SKU,Product,Stock,Cost,Price,Supplier,Supplier days
+,Personalized Initial Necklace Gold Filled,0,9.00,38.00,Silver Lane Findings,5
+LG-HOOP,Tiny Huggie Hoop Earrings Sterling Silver,0,5.50,26.00,Gemstone Direct,5
+,Birthstone Stacking Ring Dainty,0,7.20,32.00,Silver Lane Findings,5
+LG-CHARM,Custom Pet Portrait Charm,0,11.00,45.00,Gemstone Direct,7
+,Pearl Drop Bridal Earrings,0,10.50,42.00,Silver Lane Findings,5

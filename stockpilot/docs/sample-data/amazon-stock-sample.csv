@@ -1,7 +1,7 @@
-SKU,Product,Stock,Cost,Price,Supplier days
-KN-GARLIC,Garlic Press Rocker Stainless Steel,210,3.20,14.99,30
-KN-SPIRAL,Vegetable Spiralizer 5-Blade,60,7.80,24.99,35
-KN-OILSPR,Olive Oil Sprayer Glass 200ml,45,2.40,12.99,28
-KN-SCALE,Digital Kitchen Scale 5kg,260,6.10,19.99,30
-KN-PASTA,Pasta Drying Rack Bamboo,90,6.60,21.99,40
-KN-CHOP,Electric Mini Chopper 250W,0,13.00,34.99,30
+SKU,Product,Stock,Cost,Price,Supplier,Supplier days
+KN-GARLIC,Garlic Press Rocker Stainless Steel,210,3.20,14.99,Yiwu KitchenPro,30
+KN-SPIRAL,Vegetable Spiralizer 5-Blade,60,7.80,24.99,HomeChef Supply,35
+KN-OILSPR,Olive Oil Sprayer Glass 200ml,45,2.40,12.99,Yiwu KitchenPro,28
+KN-SCALE,Digital Kitchen Scale 5kg,260,6.10,19.99,HomeChef Supply,30
+KN-PASTA,Pasta Drying Rack Bamboo,90,6.60,21.99,Yiwu KitchenPro,40
+KN-CHOP,Electric Mini Chopper 250W,0,13.00,34.99,HomeChef Supply,30

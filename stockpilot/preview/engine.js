@@ -7,7 +7,8 @@
   const DAY = 86400000;
 
   // ------------------------------------------------------------------ importer
-  const norm = (h) => String(h ?? '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  const stripAccents = (s) => { try { return s.normalize('NFKD').replace(/[\u0300-\u036f]/g, ''); } catch { return s; } };
+  const norm = (h) => stripAccents(String(h ?? '').toLowerCase()).replace(/[^a-z0-9]/g, '');
   const plural = (n, word) => `${n.toLocaleString('en-US')} ${word}${n === 1 ? '' : 's'}`;
   const MAX_ROWS = 250000, MAX_QTY_PER_LINE = 100000, MAX_UNIT_PRICE = 1000000;
   const TOO_MANY_ROWS = `This file has more than ${MAX_ROWS.toLocaleString('en-US')} rows. Download a shorter date range (for example the last 12 months) and upload that.`;
@@ -55,6 +56,39 @@
   function headerScore(rows) { return rows.length ? Math.max(...rows.slice(0, 15).map(rowHits)) : -1; }
 
   /** name + ArrayBuffer -> [{sheet, rows}] */
+  // ------------------------------------------------------------------ text decoding
+  // Browsers have TextDecoder; phone JavaScript engines may lack it or ignore `fatal`, so these work without it.
+  let nativeUtf8 = null;
+  function strictNativeUtf8() {
+    if (nativeUtf8 !== null) return nativeUtf8;
+    nativeUtf8 = false;
+    try {
+      const d = new TextDecoder('utf-8', { fatal: true });
+      try { d.decode(new Uint8Array([0xff])); } catch { nativeUtf8 = d; } // only trust it if it really rejects bad bytes
+    } catch { /* no TextDecoder */ }
+    return nativeUtf8;
+  }
+  const fromCodes = (codes) => { let out = ''; for (let i = 0; i < codes.length; i += 8192) out += String.fromCharCode.apply(null, codes.slice(i, i + 8192)); return out; };
+  function decodeUtf8Strict(bytes) {
+    const native = strictNativeUtf8();
+    if (native) return native.decode(bytes);
+    const codes = [];
+    for (let i = 0; i < bytes.length;) {
+      const b = bytes[i];
+      let cp, n;
+      if (b < 0x80) { cp = b; n = 0; } else if (b >= 0xc2 && b < 0xe0) { cp = b & 0x1f; n = 1; } else if (b >= 0xe0 && b < 0xf0) { cp = b & 0x0f; n = 2; } else if (b >= 0xf0 && b < 0xf5) { cp = b & 0x07; n = 3; } else throw new Error('bad utf-8');
+      if (i + n >= bytes.length && n) throw new Error('bad utf-8');
+      for (let k = 1; k <= n; k++) { const c = bytes[i + k]; if ((c & 0xc0) !== 0x80) throw new Error('bad utf-8'); cp = (cp << 6) | (c & 0x3f); }
+      if ((n === 2 && (cp < 0x800 || (cp >= 0xd800 && cp < 0xe000))) || (n === 3 && (cp < 0x10000 || cp > 0x10ffff))) throw new Error('bad utf-8');
+      if (cp > 0xffff) { cp -= 0x10000; codes.push(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff)); } else codes.push(cp);
+      i += n + 1;
+    }
+    return fromCodes(codes);
+  }
+  const CP1252 = { 0x80: 0x20ac, 0x82: 0x201a, 0x83: 0x192, 0x84: 0x201e, 0x85: 0x2026, 0x86: 0x2020, 0x87: 0x2021, 0x88: 0x2c6, 0x89: 0x2030, 0x8a: 0x160, 0x8b: 0x2039, 0x8c: 0x152, 0x8e: 0x17d, 0x91: 0x2018, 0x92: 0x2019, 0x93: 0x201c, 0x94: 0x201d, 0x95: 0x2022, 0x96: 0x2013, 0x97: 0x2014, 0x98: 0x2dc, 0x99: 0x2122, 0x9a: 0x161, 0x9b: 0x203a, 0x9c: 0x153, 0x9e: 0x17e, 0x9f: 0x178 };
+  function decodeCp1252(bytes) { const codes = new Array(bytes.length); for (let i = 0; i < bytes.length; i++) codes[i] = CP1252[bytes[i]] || bytes[i]; return fromCodes(codes); }
+  function decodeUtf16(bytes, little) { const codes = []; for (let i = 2; i + 1 < bytes.length; i += 2) codes.push(little ? bytes[i] | (bytes[i + 1] << 8) : (bytes[i] << 8) | bytes[i + 1]); return fromCodes(codes); }
+
   function readTables(name, buf) {
     const lower = (name || '').toLowerCase();
     const bytes = new Uint8Array(buf);
@@ -79,11 +113,11 @@
     }
     if (/\.(numbers|pdf|zip)$/.test(lower)) throw new ImportProblem('Please upload a CSV, TXT or Excel (.xlsx) file.');
     let text;
-    if ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff)) text = new TextDecoder(bytes[0] === 0xff ? 'utf-16le' : 'utf-16be').decode(bytes);
+    if ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff)) text = decodeUtf16(bytes, bytes[0] === 0xff);
     else if (bytes.subarray(0, 4096).includes(0)) throw new ImportProblem("This doesn't look like a sales or stock file. Please upload the CSV, TXT or Excel file you downloaded.");
     else {
-      try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
-      catch { text = new TextDecoder('windows-1252').decode(bytes); } // Excel on Windows saves CSV this way
+      try { text = decodeUtf8Strict(bytes); }
+      catch { text = decodeCp1252(bytes); } // Excel on Windows saves CSV this way
     }
     if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
     const rows = parseCsv(text, sniffDelimiter(text.slice(0, 20000)));
@@ -803,9 +837,12 @@
     for (const pr of bundleData.pairs || []) { if (!pairFor.has(pr.a.id)) pairFor.set(pr.a.id, pr.b.name); if (!pairFor.has(pr.b.id)) pairFor.set(pr.b.id, pr.a.name); }
     const best = items.reduce((b, it) => (!b || it.next_week_revenue > b.next_week_revenue ? it : b), null);
     const dead = items.filter((it) => it.stock_plan.status === 'dead_stock').sort((a, b) => b.product.stock_qty * b.product.cost_price - a.product.stock_qty * a.product.cost_price).slice(0, 2);
+    const k30 = dash.kpis['30d'], feeRate = k30.revenue ? k30.fees / k30.revenue : 0;
     for (const it of dead) {
       const p = it.product, partner = pairFor.get(p.id) || (best && best !== it ? best.product.name : null);
-      add('low', 'clear_stock', `Clear ${p.name}: ${m(p.stock_qty * p.cost_price)} tied up`, `${p.stock_qty} in stock and no sales in 30 days. ${partner ? `Bundle it with ${partner}` : 'Try a bundle'}, or a 15–20% discount.`, p.sku);
+      // Lowest price at which a sale still covers what the item cost plus the platform's cut.
+      const floor = p.cost_price > 0 && feeRate < 1 ? p.cost_price / (1 - feeRate) : 0;
+      add('low', 'clear_stock', `Clear ${p.name}: ${m(p.stock_qty * p.cost_price)} tied up`, `${p.stock_qty} in stock and no sales in 30 days. ${partner ? `Bundle it with ${partner}` : 'Try a bundle'}, or a 15–20% discount.${floor ? ` Don't go below ${m(floor)}: under that, each sale loses money.` : ''}`, p.sku);
     }
     for (const it of items) if (it.stock_plan.status === 'overstock') add('low', 'reorder', `Pause reordering ${it.product.name}`, it.stock_plan.reason, it.product.sku);
     const k7 = dash.kpis['7d'], st = forecast.store, change = k7.change.revenue;

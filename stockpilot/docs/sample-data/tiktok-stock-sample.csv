@@ -1,6 +1,6 @@
-SKU,Product,Stock,Cost,Price,Supplier days
-GL-ICEROLL,Ice Roller for Face Depuffing,120,2.80,16.99,12
-GL-LEDMASK,LED Face Mask 7 Colours,35,19.00,59.99,15
-GL-SCRUB,Ultrasonic Skin Scrubber,90,7.40,29.99,12
-GL-GUASHA,Rose Quartz Gua Sha Set,300,3.60,18.99,12
-GL-MIRROR,Lighted Travel Makeup Mirror,50,6.90,22.99,14
+SKU,Product,Stock,Cost,Price,Supplier,Supplier days
+GL-ICEROLL,Ice Roller for Face Depuffing,120,2.80,16.99,GlowSource Beauty,12
+GL-LEDMASK,LED Face Mask 7 Colours,35,19.00,59.99,Guangzhou SkinTech,15
+GL-SCRUB,Ultrasonic Skin Scrubber,90,7.40,29.99,GlowSource Beauty,12
+GL-GUASHA,Rose Quartz Gua Sha Set,300,3.60,18.99,Guangzhou SkinTech,12
+GL-MIRROR,Lighted Travel Makeup Mirror,50,6.90,22.99,GlowSource Beauty,14

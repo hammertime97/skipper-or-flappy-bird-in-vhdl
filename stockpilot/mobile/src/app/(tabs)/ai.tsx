@@ -15,6 +15,13 @@ const FEATURES: { title: string; body: string; href: Href; cta: string; instant?
     instant: true,
   },
   {
+    title: 'Supplier orders',
+    body: 'Everything that needs reordering, grouped by supplier, with the order message written for you. Send it by WhatsApp or email in one tap.',
+    href: '/orders',
+    cta: 'See what to order',
+    instant: true,
+  },
+  {
     title: 'Profit & ads calculator',
     body: 'What one sale really earns after product cost, shipping and platform fees, and how much you can spend on ads before you lose money.',
     href: '/calculator',
@@ -49,7 +56,7 @@ const FEATURES: { title: string; body: string; href: Href; cta: string; instant?
 ];
 
 export default function AIScreen() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, local } = useAuth();
   const b = user?.billing;
   useFocusEffect(
     useCallback(() => {
@@ -60,13 +67,13 @@ export default function AIScreen() {
     <Screen>
       <View>
         <T kind="title">Tools</T>
-        <T kind="secondary">Built on your real sales data. The first three work instantly on every plan; the AI tools add live web research.</T>
+        <T kind="secondary">Built on your real sales data. Tools marked “no AI needed” work instantly on every plan; the AI tools add live web research.</T>
       </View>
       {b ? (
         <Card style={{ gap: Spacing.sm }}>
           <Row style={{ justifyContent: 'space-between' }}>
             <T style={{ fontWeight: '700' }}>{b.plan === 'pro' ? 'StockPilot Pro' : 'Free plan'}</T>
-            <Badge text={`${b.ai_calls_used}/${b.ai_calls_limit} AI requests this month`} />
+            <Badge text={local ? 'On this phone' : `${b.ai_calls_used}/${b.ai_calls_limit} AI requests this month`} />
           </Row>
           {b.plan === 'free' ? <Button title="Upgrade to Pro" onPress={() => router.push('/paywall')} /> : null}
         </Card>

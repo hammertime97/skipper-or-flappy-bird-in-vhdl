@@ -21,22 +21,11 @@ import type {
   WeeklyBriefReport,
 } from './types';
 
+import { ApiError } from './api-error';
+
+export { ApiError };
+
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://10.0.2.2:8000').replace(/\/$/, '');
-
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public code?: string,
-  ) {
-    super(message);
-  }
-
-  /** The server wants the user to upgrade (free AI quota used, or a Pro-only feature). */
-  get needsUpgrade() {
-    return this.status === 402 && this.code === 'upgrade_required';
-  }
-}
 
 let authToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
@@ -84,7 +73,7 @@ async function request<T>(method: string, path: string, body?: unknown, form?: F
 
 export type ProductInput = Omit<Product, 'id' | 'archived' | 'created_at' | 'stock_known' | 'stage' | 'source'>;
 
-export const api = {
+const remoteApi = {
   register: (email: string, password: string) =>
     request<{ token: string; user: User }>('POST', '/auth/register', { email, password }),
   login: (email: string, password: string) =>
@@ -107,7 +96,7 @@ export const api = {
   forecasts: (horizon = 4) => request<ForecastResponse>('GET', `/forecasts?horizon=${horizon}`),
   importGuides: () => request<{ guides: ImportGuide[]; roles: Record<string, string> }>('GET', '/import/guides'),
   importSamples: () => request<SampleFile[]>('GET', '/import/samples'),
-  uploadFile: (file: { uri: string; name: string; mimeType?: string }) => {
+  uploadFile: (file: { uri: string; name: string; mimeType?: string; file?: Blob }) => {
     const form = new FormData();
     // React Native's FormData accepts { uri, name, type } file parts.
     form.append('file', { uri: file.uri, name: file.name, type: file.mimeType ?? 'text/csv' } as unknown as Blob);
@@ -146,3 +135,24 @@ export const api = {
     request<ListingReport>('POST', '/ai/listing', input),
   reports: <T>(kind: string, limit = 10) => request<T[]>('GET', `/ai/reports?kind=${kind}&limit=${limit}`),
 };
+
+export type RemoteApi = typeof remoteApi;
+
+// On-phone mode: the same calls answered by the shared engine on the device, with no server.
+let local: RemoteApi | null = null;
+
+export function setLocalApi(impl: RemoteApi | null) {
+  local = impl;
+}
+
+export function isLocalMode(): boolean {
+  return local !== null;
+}
+
+/** Every screen calls this; it goes to the server, or to the on-phone engine in on-phone mode. */
+export const api = Object.fromEntries(
+  (Object.keys(remoteApi) as (keyof RemoteApi)[]).map((k) => [
+    k,
+    (...args: unknown[]) => ((local ?? remoteApi)[k] as (...a: unknown[]) => unknown)(...args),
+  ]),
+) as RemoteApi;

@@ -6,7 +6,8 @@ import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth';
 
 export default function SignIn() {
-  const { signIn } = useAuth();
+  const { signIn, startOnPhone } = useAuth();
+  const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<'login' | 'register'>('register');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,6 +26,17 @@ export default function SignIn() {
     }
   };
 
+  const tryOnPhone = async () => {
+    setStarting(true);
+    setError(null);
+    try {
+      await startOnPhone();
+    } catch (e) {
+      setError(e as Error);
+      setStarting(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen>
@@ -34,8 +46,17 @@ export default function SignIn() {
             Know what you&apos;ll sell next week, what to reorder, and what&apos;s trending in your niche.
           </T>
         </View>
+        <Card style={{ gap: Spacing.sm }}>
+          <T kind="heading">Try it now, no account needed</T>
+          <T kind="secondary">
+            Everything runs on this phone and works offline. Your sales data never leaves your phone. Load a sample store
+            or import your own file in two minutes.
+          </T>
+          <Button title="Start on this phone" onPress={tryOnPhone} loading={starting} />
+          <T kind="muted">AI features (live trend search, AI plan, assistant) need a free account.</T>
+        </Card>
         <Card style={{ gap: Spacing.md }}>
-          <T kind="heading">{mode === 'register' ? 'Create your account' : 'Welcome back'}</T>
+          <T kind="heading">{mode === 'register' ? 'Or create your account' : 'Welcome back'}</T>
           <Input
             label="Email"
             value={email}

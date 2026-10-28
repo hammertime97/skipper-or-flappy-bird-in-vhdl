@@ -63,7 +63,7 @@ export default function ImportScreen() {
       });
       if (res.canceled || !res.assets[0]) return;
       const f = res.assets[0];
-      setPreview(await api.uploadFile({ uri: f.uri, name: f.name, mimeType: f.mimeType }));
+      setPreview(await api.uploadFile({ uri: f.uri, name: f.name, mimeType: f.mimeType, file: f.file }));
       setOverrides({});
       setStep('preview');
     });

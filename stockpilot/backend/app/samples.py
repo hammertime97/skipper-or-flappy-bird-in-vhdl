@@ -338,9 +338,9 @@ def spreadsheet_xlsx(store: SampleStore, sales: list[SimSale]) -> bytes:
         if not s.cancelled:
             ws.append([s.when.replace(tzinfo=None), s.product.name, s.qty, s.price])
     st = wb.create_sheet("Stock")
-    st.append(["Product", "SKU", "In stock", "Cost", "Price", "Supplier days"])
-    for p in store.products:
-        st.append([p.name, p.sku, p.stock, p.cost, p.price, p.lead_days])
+    st.append(["Product", "SKU", "In stock", "Cost", "Price", "Supplier", "Supplier days"])
+    for i, p in enumerate(store.products):
+        st.append([p.name, p.sku, p.stock, p.cost, p.price, supplier_for(store.key, i), p.lead_days])
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -367,11 +367,26 @@ def build(key: str, now: datetime | None = None) -> tuple[str, bytes]:
     raise KeyError(key)
 
 
+# Made-up suppliers for the sample stock lists, so supplier orders have something to group by.
+SUPPLIERS = {
+    "ebay": ["Shenzhen RetroTech", "GameParts Wholesale"],
+    "amazon": ["Yiwu KitchenPro", "HomeChef Supply"],
+    "etsy": ["Silver Lane Findings", "Gemstone Direct"],
+    "tiktok": ["GlowSource Beauty", "Guangzhou SkinTech"],
+    "spreadsheet": ["EcoPet Supply", "Green Paws Trading"],
+}
+
+
+def supplier_for(key: str, i: int) -> str:
+    names = SUPPLIERS.get(key, [""])
+    return names[i % len(names)]
+
+
 def stock_csv(key: str) -> tuple[str, bytes]:
     """A simple stock list for any sample store (sellers can also type stock in the app)."""
     store = STORES[key]
-    rows = [["SKU", "Product", "Stock", "Cost", "Price", "Supplier days"]]
-    for p in store.products:
+    rows = [["SKU", "Product", "Stock", "Cost", "Price", "Supplier", "Supplier days"]]
+    for i, p in enumerate(store.products):
         sku = p.sku or ("EBAY-" + p.item_id if store.platform == "ebay" and p.item_id else "")
-        rows.append([sku, p.name, str(p.stock), f"{p.cost:.2f}", f"{p.price:.2f}", str(p.lead_days)])
+        rows.append([sku, p.name, str(p.stock), f"{p.cost:.2f}", f"{p.price:.2f}", supplier_for(key, i), str(p.lead_days)])
     return f"{key}-stock-sample.csv", _csv(rows).encode()

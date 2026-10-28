@@ -12,7 +12,7 @@ import { buy, getPackages, purchasesAvailable, restore } from '@/lib/purchases';
 const PERIOD: Record<string, string> = { P1W: 'week', P1M: 'month', P3M: '3 months', P6M: '6 months', P1Y: 'year' };
 
 export default function Paywall() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, local, setLocalPlan } = useAuth();
   const [packages, setPackages] = useState<PurchasesPackage[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -87,7 +87,15 @@ export default function Paywall() {
         </Card>
       ) : null}
 
-      {isPro ? (
+      {local ? (
+        <Card style={{ gap: Spacing.sm }}>
+          <T style={{ fontWeight: '700' }}>Test build</T>
+          <T kind="secondary">
+            Payments aren&apos;t connected in this test version. Switch between Free and Pro to see what each plan includes.
+          </T>
+          <Button title={isPro ? 'Switch back to Free' : 'Try Pro on this phone'} onPress={() => setLocalPlan(isPro ? 'free' : 'pro').then(() => router.back())} />
+        </Card>
+      ) : isPro ? (
         <Button
           title="Manage in Google Play"
           kind="secondary"

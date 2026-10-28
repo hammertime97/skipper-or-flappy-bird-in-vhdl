@@ -200,12 +200,17 @@ def smart_plan(forecast: dict, dashboard: dict, focus: dict, bundle_data: dict, 
         (it for it in items if it["stock_plan"]["status"] == "dead_stock"),
         key=lambda it: -(it["product"]["stock_qty"] * it["product"]["cost_price"]),
     )[:2]
+    k30 = dashboard["kpis"]["30d"]
+    fee_rate = k30["fees"] / k30["revenue"] if k30["revenue"] else 0.0
     for it in dead:
         p = it["product"]
         partner = pair_for.get(p["id"]) or (best["product"]["name"] if best and best is not it else None)
         tip = f"Bundle it with {partner}" if partner else "Try a bundle"
+        # Lowest price at which a sale still covers what the item cost plus the platform's cut.
+        floor = p["cost_price"] / (1 - fee_rate) if p["cost_price"] > 0 and fee_rate < 1 else 0
+        floor_tip = f" Don't go below {m(floor)}: under that, each sale loses money." if floor else ""
         add("low", "clear_stock", f"Clear {p['name']}: {m(p['stock_qty'] * p['cost_price'])} tied up",
-            f"{p['stock_qty']} in stock and no sales in 30 days. {tip}, or a 15–20% discount.", p["sku"])
+            f"{p['stock_qty']} in stock and no sales in 30 days. {tip}, or a 15–20% discount.{floor_tip}", p["sku"])
     for it in items:
         p, plan = it["product"], it["stock_plan"]
         if plan["status"] == "overstock":

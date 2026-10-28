@@ -8,7 +8,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 export default function AccountScreen() {
-  const { user, setUser, signOut, refreshUser } = useAuth();
+  const { user, setUser, signOut, refreshUser, local, wipeOnPhone } = useAuth();
   const [form, setForm] = useState({
     store_name: user?.store_name ?? '',
     niche: user?.niche ?? '',
@@ -34,7 +34,7 @@ export default function AccountScreen() {
   };
 
   const loadDemo = () =>
-    Alert.alert('Load demo store?', 'This replaces all products and sales in this account with a demo pet-supplies store.', [
+    Alert.alert('Load demo store?', 'This replaces all products and sales with a demo store full of made-up sales.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Replace my data',
@@ -84,7 +84,9 @@ export default function AccountScreen() {
             <Badge text={b.plan === 'pro' ? 'Pro' : 'Free'} tone={b.plan === 'pro' ? 'good' : 'neutral'} />
           </Row>
           <T kind="secondary">
-            {b.ai_calls_used} of {b.ai_calls_limit} AI requests used this month
+            {local
+              ? 'On-phone mode: AI features need an account.'
+              : `${b.ai_calls_used} of ${b.ai_calls_limit} AI requests used this month`}
             {b.plan_expires_at ? ` · renews or ends ${new Date(b.plan_expires_at).toLocaleDateString()}` : ''}
           </T>
           <Button title={b.plan === 'pro' ? 'Manage subscription' : 'Upgrade to Pro'} kind={b.plan === 'pro' ? 'secondary' : 'primary'} onPress={() => router.push('/paywall')} />
@@ -99,10 +101,27 @@ export default function AccountScreen() {
         <Button title="Load demo store" kind="secondary" onPress={loadDemo} />
       </Card>
 
-      <View style={{ gap: Spacing.sm }}>
-        <T kind="muted">Signed in as {user?.email}</T>
-        <Button title="Sign out" kind="danger" onPress={signOut} />
-      </View>
+      {local ? (
+        <View style={{ gap: Spacing.sm }}>
+          <T kind="muted">On-phone mode: your data is stored only on this phone.</T>
+          <Button
+            title="Delete everything on this phone"
+            kind="danger"
+            onPress={() =>
+              Alert.alert('Delete everything?', 'This removes all products, sales and settings stored on this phone.', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Delete', style: 'destructive', onPress: () => void wipeOnPhone().then(() => router.navigate('/')) },
+              ])
+            }
+          />
+          <Button title="Leave on-phone mode" kind="secondary" onPress={signOut} />
+        </View>
+      ) : (
+        <View style={{ gap: Spacing.sm }}>
+          <T kind="muted">Signed in as {user?.email}</T>
+          <Button title="Sign out" kind="danger" onPress={signOut} />
+        </View>
+      )}
     </Screen>
   );
 }
