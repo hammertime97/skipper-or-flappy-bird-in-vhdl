@@ -43,13 +43,16 @@ Every screen works instantly with no AI request, on every plan. AI adds a second
 
 | Feature | What the seller gets |
 |---|---|
-| **Weekly Plan** | A prioritised to-do list from the numbers: what to reorder and the **last day to order** so stock arrives before it runs out, what to push, what to clear (with a bundle partner), and which big shopping event to prepare for. |
+| **Weekly Plan** | A prioritised to-do list from the numbers: what to reorder and the **last day to order** so stock arrives before it runs out, what to push, what to clear (with a bundle partner and the lowest price that still covers cost and fees), and which big shopping event to prepare for. Shareable in one tap. |
+| **Supplier orders** | Everything that needs reordering, grouped by supplier, with the order message written ("I'd like to place an order: 62 × …") and sent through the phone's share sheet (WhatsApp, email, text). |
 | **Your money makers** | 80/20 view: the few products that make most of the profit (after cost and fees), and any product that loses money. |
 | **Bought together** | Pairs of products customers buy in the same order, more often than chance. Use them for bundles and cross-selling. |
 | **Profit & ads calculator** | Profit per sale after product cost, shipping and the platform's fee; the most you can spend on ads per sale; break-even ROAS; and the price for a 30% margin. |
 | **Trends library** | Researched trending products for 9 niches (pets, kitchen, beauty, fitness, tech, jewelry, home decor, baby, car & outdoor) with momentum, competition, what the data shows, what to search for on supplier sites, and a source link. The seller's niche is matched automatically. "Add to my store" works here too. |
 
 The trends library was researched on 27 Oct 2026 (`backend/app/trend_library.py`) and needs refreshing every month or two. Sales figures in it come from third-party trackers, which estimate, so the app presents them as signals to check.
+
+**On-phone mode (no account).** "Start on this phone" runs every screen above on the device, offline, with the data stored only on the phone. It uses the same engine as the web preview, which gives the same results as the server. It lets sellers try the app before signing up, and suits sellers who don't want their sales data on anyone's server. AI features need an account.
 
 **5. AI features (Claude)**
 
@@ -89,9 +92,13 @@ stockpilot/
 │   ├── app/ai/                 weekly_brief, trend_scout, product_check, assistant, listing, column_mapper
 │   └── tests/                  70 tests (importer on every sample file and on messy real-world files, forecasting, API, AI flows with Claude faked)
 ├── mobile/    Expo / React Native app (Android), Expo Router
+│   ├── src/local/              on-phone mode: the shared engine answering the same API calls on the device
+│   └── scripts/smoke-test.sh   taps through the installed APK on an emulator (used by CI)
 ├── preview/   self-contained web preview: the same importer and forecasting ported to JavaScript
 └── docs/      screenshots, sample (dummy) files
 ```
+
+`python preview/build_preview.py` also copies the engine and its tables into `mobile/src/local/generated/` for on-phone mode.
 
 **The web preview** (`preview/`) runs the import, dashboard, forecasting, insights and trends library entirely in the browser, with no account and no AI needed. Its optional "Check with AI" buttons work when the page is opened inside Claude. It reuses the backend's tables, and `parity-check.js` confirms `engine.js` gives the same results as the Python code on every sample file and on the money makers, bundles and calculator:
 ```bash
@@ -120,7 +127,9 @@ cp .env.example .env.local     # EXPO_PUBLIC_API_URL=http://10.0.2.2:8000 for th
 npm install
 npx expo start
 ```
-Sign up, tap **Import my sales**, pick a platform and **Try a sample file**.
+Sign up (or tap **Start on this phone**), tap **Import my sales**, pick a platform and **Try a sample file**.
+
+**Android test build (APK).** `.github/workflows/stockpilot-android.yml` builds an APK on every push to the app, installs it on an Android 14 emulator, taps through on-phone mode (demo store, forecast, trends, supplier orders, weekly plan, sample import, reopening the app), and publishes it as a GitHub release (`stockpilot-test-N`) that can be downloaded straight to a phone. The test APK is signed with a debug key, so it is for testing only; Play Store builds go through EAS (step 4 below).
 
 ## Launching on Google Play: checklist
 
