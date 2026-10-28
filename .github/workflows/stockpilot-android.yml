@@ -57,6 +57,10 @@ jobs:
 
       - name: Build the APK
         working-directory: stockpilot/mobile/android
+        env:
+          # No server yet: the app runs entirely on the phone. Set EXPO_PUBLIC_API_URL here once one is live.
+          # Trends updates come from the JSON file in this repo, so they need no server either.
+          EXPO_PUBLIC_TRENDS_URL: https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/stockpilot/trends/trend-library.json
         run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64 -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1g"
 
       - name: Collect the APK
@@ -126,6 +130,6 @@ jobs:
 
           Install: open this page on your Android phone, tap StockPilot-test.apk, then Open. If Android asks, allow your browser to install apps.
 
-          Tap **Start on this phone** to use it without an account: everything runs on the phone. AI features need the StockPilot server, which isn't connected in this build. Subscriptions can be switched between Free and Pro for testing.
+          Everything runs on the phone: no account, no server, works offline. The trends list updates itself from this repository. Subscriptions can be switched between Free and Pro for testing until Google Play billing is set up.
 
           This build was installed and tapped through on an Android 14 emulator before publishing."

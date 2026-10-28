@@ -79,6 +79,38 @@ async function write(s: Saved) {
   }
 }
 
+// The latest trends list downloaded from EXPO_PUBLIC_TRENDS_URL, kept for offline use.
+const TRENDS_FILE = 'stockpilot-trends.json';
+const TRENDS_KEY = 'stockpilot.trends';
+
+export async function loadTrends(): Promise<{ fetchedAt: number; lib: unknown } | null> {
+  try {
+    if (Platform.OS === 'web') {
+      const raw = globalThis.localStorage?.getItem(TRENDS_KEY);
+      return raw ? JSON.parse(raw) : null;
+    }
+    const f = new File(Paths.document, TRENDS_FILE);
+    return f.exists ? JSON.parse(await f.text()) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveTrends(value: { fetchedAt: number; lib: unknown }) {
+  try {
+    const raw = JSON.stringify(value);
+    if (Platform.OS === 'web') {
+      globalThis.localStorage?.setItem(TRENDS_KEY, raw);
+      return;
+    }
+    const f = new File(Paths.document, TRENDS_FILE);
+    if (!f.exists) f.create();
+    await f.write(raw);
+  } catch {
+    // Not critical: the bundled list still works.
+  }
+}
+
 export async function wipe() {
   if (pending) clearTimeout(pending);
   pending = null;

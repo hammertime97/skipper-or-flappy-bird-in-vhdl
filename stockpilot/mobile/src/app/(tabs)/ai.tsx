@@ -4,12 +4,13 @@ import { View } from 'react-native';
 
 import { Badge, Button, Card, Row, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
+import { SERVER_ENABLED } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 const FEATURES: { title: string; body: string; href: Href; cta: string; instant?: boolean }[] = [
   {
     title: 'Weekly Plan',
-    body: 'Your forecasts turned into a to-do list: what to reorder and by which day, what to push, what to clear. AI can add a second opinion.',
+    body: 'Your forecasts turned into a to-do list: what to reorder and by which day, what to push, what to clear.',
     href: '/ai/weekly-plan',
     cta: 'Open this week’s plan',
     instant: true,
@@ -30,28 +31,31 @@ const FEATURES: { title: string; body: string; href: Href; cta: string; instant?
   },
   {
     title: 'Trending products',
-    body: 'Researched trends for 9 niches, ready to add to your store. Pro adds a live AI search for your exact niche.',
+    body: 'What’s selling now in 9 niches, updated every few weeks, ready to add to your store.',
     href: '/trends',
     cta: 'Open the Trends tab',
     instant: true,
   },
   {
     title: 'Product Check',
-    body: 'Thinking of adding something? Get a go / test / skip verdict with demand, saturation and margin scores before you spend a cent.',
+    body: 'Thinking of adding something? See the profit after fees, whether it’s trending, and rule or shipping red flags, before you spend a cent.',
     href: '/ai/product-check',
     cta: 'Check a product idea',
+    instant: true,
   },
   {
     title: 'Ask StockPilot',
-    body: '“What should I reorder?” “Which product made me the most profit this month?” Ask in plain English; answers come from your own data.',
+    body: '“What should I reorder?” “Which product made me the most profit this month?” Instant answers from your own sales, stock and forecasts.',
     href: '/ai/assistant',
     cta: 'Ask a question',
+    instant: true,
   },
   {
     title: 'Listing Writer',
-    body: 'SEO titles, bullet points, descriptions and hashtags for Shopify, TikTok Shop, Amazon, eBay or Etsy.',
+    body: 'A ready-to-edit title, bullet points, description and hashtags for Shopify, TikTok Shop, Amazon, eBay or Etsy.',
     href: '/ai/listing',
     cta: 'Write a listing',
+    instant: true,
   },
 ];
 
@@ -67,13 +71,15 @@ export default function AIScreen() {
     <Screen>
       <View>
         <T kind="title">Tools</T>
-        <T kind="secondary">Built on your real sales data. Tools marked “no AI needed” work instantly on every plan; the AI tools add live web research.</T>
+        <T kind="secondary">
+          Built on your real sales data. Every tool works instantly{SERVER_ENABLED && !local ? ', and AI can add a second opinion with live web research' : ', right on your phone'}.
+        </T>
       </View>
       {b ? (
         <Card style={{ gap: Spacing.sm }}>
           <Row style={{ justifyContent: 'space-between' }}>
             <T style={{ fontWeight: '700' }}>{b.plan === 'pro' ? 'StockPilot Pro' : 'Free plan'}</T>
-            <Badge text={local ? 'On this phone' : `${b.ai_calls_used}/${b.ai_calls_limit} AI requests this month`} />
+            <Badge text={local ? 'Works offline' : `${b.ai_calls_used}/${b.ai_calls_limit} AI requests this month`} />
           </Row>
           {b.plan === 'free' ? <Button title="Upgrade to Pro" onPress={() => router.push('/paywall')} /> : null}
         </Card>
@@ -82,7 +88,7 @@ export default function AIScreen() {
         <Card key={f.title} style={{ gap: Spacing.sm }} onPress={() => router.push(f.href)}>
           <Row style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
             <T kind="heading">{f.title}</T>
-            <Badge text={f.instant ? 'Instant · no AI needed' : 'AI'} tone={f.instant ? 'good' : 'tint'} />
+            <Badge text={f.instant ? 'Instant' : 'AI'} tone={f.instant ? 'good' : 'tint'} />
           </Row>
           <T kind="secondary">{f.body}</T>
           <T style={{ fontWeight: '700' }}>{f.cta} →</T>

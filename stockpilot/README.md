@@ -2,6 +2,8 @@
 
 An AI co-pilot for e-commerce and dropshipping sellers, built as an Android app for Google Play with a Pro subscription.
 
+**It runs without a server.** By default the app runs entirely on the phone: imports, forecasts, reorder dates, the weekly plan, supplier orders, trends, Product Check, instant answers and listing drafts. Running cost is about $0 a month apart from Google Play's cut of subscriptions. The server (`backend/`) is optional and adds accounts and the AI features (live web research, AI second opinions); see [Running costs](#running-costs).
+
 | Dashboard | Weekly forecast | Product + stock plan | AI Weekly Plan |
 |---|---|---|---|
 | ![](docs/screenshots/dashboard.png) | ![](docs/screenshots/forecast.png) | ![](docs/screenshots/product.png) | ![](docs/screenshots/weekly-plan.png) |
@@ -52,7 +54,16 @@ Every screen works instantly with no AI request, on every plan. AI adds a second
 
 The trends library was researched on 27 Oct 2026 (`backend/app/trend_library.py`) and needs refreshing every month or two. Sales figures in it come from third-party trackers, which estimate, so the app presents them as signals to check.
 
-**On-phone mode (no account).** "Start on this phone" runs every screen above on the device, offline, with the data stored only on the phone. It uses the same engine as the web preview, which gives the same results as the server. It lets sellers try the app before signing up, and suits sellers who don't want their sales data on anyone's server. AI features need an account.
+**On-phone mode (the default).** A build without `EXPO_PUBLIC_API_URL` opens straight into on-phone mode: every screen above runs on the device, offline, with the data stored only on the phone. It uses the same engine as the web preview, which gives the same results as the server. With a server configured, sellers can choose "Start on this phone" or create an account.
+
+Without a server, these also work on the phone, with no AI:
+- **Product Check:** profit per sale after the platform's fee, shipping and ads; a go / test small / skip verdict; whether the product is in the trends list; rule and shipping red flags (batteries, cosmetics, children's products, trademarks…); a cheap test plan.
+- **Ask StockPilot:** instant answers from the store's own numbers (what to reorder and by when, profit and best sellers, losing products, slow stock, this week vs last, the last 30 days, next week's forecast, fees, stock value, channels, bought together, any product by name).
+- **Listing Writer:** a ready-to-edit draft built only from the seller's details, within the platform's title limit.
+- **Trends updates:** the app downloads the latest list from `trends/trend-library.json` (the URL is set with `EXPO_PUBLIC_TRENDS_URL`), at most once a day, and keeps it for offline use. To update trends, edit `backend/app/trend_library.py` (with sources), run `python preview/build_preview.py` and push. No app release or server is needed.
+- **Pro without a server:** the app asks Google Play (through RevenueCat) whether the phone's Google account has Pro. Pro unlocks forecasts, reorder dates and supplier orders for every product; Free covers the top 10 sellers. Without a RevenueCat key (test builds), a Free/Pro switch replaces the payment buttons.
+
+When a server is configured, the AI features appear as optional extras on the same screens.
 
 **5. AI features (Claude)**
 
@@ -129,19 +140,28 @@ npx expo start
 ```
 Sign up (or tap **Start on this phone**), tap **Import my sales**, pick a platform and **Try a sample file**.
 
-**Android test build (APK).** `.github/workflows/stockpilot-android.yml` builds an APK on every push to the app, installs it on an Android 14 emulator, taps through on-phone mode (demo store, forecast, trends, supplier orders, weekly plan, sample import, reopening the app), and publishes it as a GitHub release (`stockpilot-test-N`) that can be downloaded straight to a phone. The test APK is signed with a debug key, so it is for testing only; Play Store builds go through EAS (step 4 below).
+**Android test build (APK).** `.github/workflows/stockpilot-android.yml` builds an APK on every push to the app, installs it on an Android 14 emulator, taps through the app (demo store, forecast, trends, supplier orders, weekly plan, Product Check, Ask, Listing Writer, sample import, a file picked through Android's file picker, reopening the app), and publishes it as a GitHub release (`stockpilot-test-N`) that can be downloaded straight to a phone. The test APK is signed with a debug key, so it is for testing only; Play Store builds go through EAS (step 4 below).
+
+## Running costs
+
+| Setup | What sellers get | Monthly cost |
+|---|---|---|
+| **No server** (default) | Everything except accounts and AI | About $0. Google Play keeps 15% of subscriptions, and RevenueCat is free up to about $2,500 a month in revenue. |
+| **With the server** | Adds accounts, sync and the AI features | Hosting about $10–45 a month, plus AI per use: about $0.50–1.00 per research run (web search included) and $0.02–0.08 per chat or listing, at Anthropic's published prices. Lower the Pro AI cap (`PRO_AI_CALLS_PER_MONTH`, 400 today) and the free allowance before launch, so one heavy user can't cost more than they pay. |
 
 ## Launching on Google Play: checklist
 
-1. **Deploy the backend** to any host that runs Docker (Railway, Render, Fly.io, Cloud Run…) using `backend/Dockerfile`. Set:
+The server is optional: to launch without it, skip step 1 and leave `EXPO_PUBLIC_API_URL` empty in step 4.
+
+1. **Deploy the backend** (optional) to any host that runs Docker (Railway, Render, Fly.io, Cloud Run…) using `backend/Dockerfile`. Set:
    - `ANTHROPIC_API_KEY`
    - `JWT_SECRET`: a long random string
    - `DATABASE_URL`: Postgres (also add `psycopg[binary]` to `requirements.txt`)
    - `REVENUECAT_WEBHOOK_SECRET`
    - `CLAUDE_MODEL` / `CLAUDE_RESEARCH_MODEL`: optional
 2. **Google Play Console** ($25 one-time): create the app (package `com.stockpilot.app`, or change it in `mobile/app.json`), then create a subscription under *Monetize → Subscriptions*.
-3. **RevenueCat**: connect the Play app, create an entitlement named **`pro`**, attach the subscription products, and put them in the current offering. Point the webhook to `https://YOUR-API/billing/revenuecat-webhook` with your secret as the Authorization header.
-4. **Build:** set `EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY`, then run `npx eas-cli@latest build --platform android --profile production` and `npx eas-cli@latest submit --platform android --profile production`.
+3. **RevenueCat**: connect the Play app, create an entitlement named **`pro`**, attach the subscription products, and put them in the current offering. With a server, also point the webhook to `https://YOUR-API/billing/revenuecat-webhook` with your secret as the Authorization header.
+4. **Build:** set `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY`, `EXPO_PUBLIC_TRENDS_URL` (the raw URL of `trends/trend-library.json` on your main branch) and, with a server, `EXPO_PUBLIC_API_URL`. Then run `npx eas-cli@latest build --platform android --profile production` and `npx eas-cli@latest submit --platform android --profile production`.
 5. **Store listing:** privacy policy URL (required), the Data safety form, screenshots and content rating. Test purchases with a licence-tester account on the internal track.
 
 ## Worth knowing
@@ -153,5 +173,5 @@ Sign up (or tap **Start on this phone**), tap **Import my sales**, pick a platfo
 - Direct Shopify / eBay / Amazon / TikTok Shop connections (OAuth), so sellers don't have to download files at all
 - A Monday push notification: "Your plan is ready: 2 products need reordering"
 - Automatic weekly Trend Scout runs for Pro users, with alerts when a new product starts trending
-- Supplier management and purchase-order drafts
+- An optional on-phone AI (Google's built-in model on phones that have one) that rewrites the instant answers more naturally; the numbers stay the app's own
 - Ad-spend import, so profit includes marketing cost

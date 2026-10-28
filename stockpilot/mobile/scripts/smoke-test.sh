@@ -40,13 +40,16 @@ seek() { # wait for $1 to load, then scroll to find it
 }
 
 screen() { dump; echo "=== $1 ==="; python3 "$HERE/ui.py" texts "$OUT/ui.xml" | head -40; }
+hide_keyboard() { adb shell dumpsys input_method | grep -q "mInputShown=true" && adb shell input keyevent KEYCODE_BACK; sleep 1; }
+type_into() { # tap the field labelled or hinted $1 and type $2
+  tap "$1" 1; adb shell input text "$(printf %s "$2" | sed 's/ /%s/g')"; sleep 1; hide_keyboard
+}
 
 adb install -r "$APK" || fail "install failed"
 adb logcat -c
 adb shell am start -n "$PKG/.MainActivity" || fail "could not start"
-expect "Start on this phone" 90; alive; shot sign-in; screen "Sign-in"
-tap "Start on this phone" 4
-expect "Just look around with a demo store" 30; shot empty-store
+# No server in this build: the app opens straight into on-phone mode, no sign-in.
+expect "Just look around with a demo store" 90; alive; shot first-open; screen "First open"
 tap "Just look around with a demo store" 6
 expect "Profit after fees" 90; alive; shot home; screen "Home with demo store"
 tap "Forecast" 6; expect "Next week" 60; alive; shot forecast; screen "Forecast"
@@ -56,7 +59,21 @@ tap "Tools" 3; expect "Supplier orders" 30; shot tools
 tap "See what to order" 6; expect "Total at cost price" 60; alive; shot orders; screen "Supplier orders"
 adb shell input keyevent KEYCODE_BACK; sleep 2
 tap "Open this week" 6; expect "Weekly Plan" 60; seek "Do this week"; shot weekly-plan; screen "Weekly plan"
-tap "Check with AI" 4; seek "AI features run on StockPilot"; shot ai-needs-server
+seek "Share this plan"
+adb shell input keyevent KEYCODE_BACK; sleep 2
+# Product Check without AI: the numbers from the user's own test (cost 300, price 350 on eBay).
+tap "Check a product idea" 4; expect "Product idea" 20
+type_into "e.g. heated pet bed with timer" "Phone mount for rideshare drivers"
+type_into "24.99" "350"; type_into "6.50" "300"
+tap "Should I sell this?" 3; seek "Skip it at this price"; shot product-check; screen "Product check"
+seek "Is it trending?"; seek "Cheap test plan"
+adb shell input keyevent KEYCODE_BACK; sleep 2
+# Ask without AI: instant answers from the store's own numbers.
+tap "Ask a question" 4; tap "What should I reorder this week?" 4; seek "need ordering"; shot ask; screen "Ask"
+adb shell input keyevent KEYCODE_BACK; sleep 2
+# Listing Writer without AI.
+tap "Write a listing" 4; type_into "e.g. Self-cleaning slicker brush" "No-pull dog harness"
+tap "Write listing" 3; seek "Bullet points"; shot listing; screen "Listing"
 adb shell input keyevent KEYCODE_BACK; sleep 2
 tap "Home" 3; tap "Account" 3; expect "Your store" 20
 tap "Import sales or stock" 3; expect "Where do you sell?" 20

@@ -93,7 +93,7 @@ export default function Calculator() {
       )}
       {params.name ? (
         <Button
-          title="Ask AI: should I sell this?"
+          title="Check this product idea"
           kind="secondary"
           onPress={() => router.push({ pathname: '/ai/product-check', params: { idea: params.name } })}
         />

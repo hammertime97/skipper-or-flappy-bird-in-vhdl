@@ -3,8 +3,11 @@
  *
  * Setup (once): create the subscription in Play Console, add it to a RevenueCat
  * offering with an entitlement called "pro", and put the RevenueCat Android public
- * SDK key in EXPO_PUBLIC_REVENUECAT_ANDROID_KEY. The backend learns about purchases
- * from RevenueCat's webhook, so the server stays the source of truth for the plan.
+ * SDK key in EXPO_PUBLIC_REVENUECAT_ANDROID_KEY.
+ *
+ * With a server, the backend learns about purchases from RevenueCat's webhook and stays the
+ * source of truth for the plan. Without one (on-phone mode), the app asks RevenueCat directly
+ * whether this Google account has Pro: see hasProOnThisDevice().
  */
 import { Platform } from 'react-native';
 import Purchases, { type PurchasesPackage } from 'react-native-purchases';
@@ -41,6 +44,22 @@ export async function resetPurchaser() {
     await Purchases.logOut();
   } catch {
     // logOut throws for anonymous users; nothing to do.
+  }
+}
+
+/**
+ * On-phone mode: does this phone's Google account have an active Pro subscription?
+ * Null when subscriptions aren't set up in this build, or RevenueCat can't be reached
+ * (then the app keeps the plan it last knew).
+ */
+export async function hasProOnThisDevice(): Promise<boolean | null> {
+  if (!purchasesAvailable()) return null;
+  try {
+    ensureConfigured();
+    const info = await Purchases.getCustomerInfo();
+    return PRO_ENTITLEMENT in info.entitlements.active;
+  } catch {
+    return null;
   }
 }
 

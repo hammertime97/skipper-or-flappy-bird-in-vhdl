@@ -7,7 +7,7 @@ import { Badge, Bullets, Button, Card, Chips, ErrorBox, Input, Row, Screen, Sect
 import { Spacing } from '@/constants/theme';
 import { useAiRun } from '@/hooks/use-ai';
 import { useApi } from '@/hooks/use-api';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, SERVER_ENABLED } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ago, money } from '@/lib/format';
 import type { LibraryItem, Product, TrendingProduct, TrendLibrary, TrendReport } from '@/lib/types';
@@ -16,12 +16,13 @@ const MOMENTUM = { exploding: '🚀 Exploding', rising: '▲ Rising', steady: '�
 
 /** What's booming in the seller's niche, and their list of products to try. */
 export default function TrendsScreen() {
-  const { user } = useAuth();
+  const { user, local } = useAuth();
+  const aiAvailable = SERVER_ENABLED && !local;
   const cur = user?.currency ?? 'USD';
   const [niche, setNiche] = useState(user?.niche ?? '');
   const [market, setMarket] = useState(user?.target_market ?? '');
   const [editing, setEditing] = useState(false);
-  const latest = useApi(() => api.reports<TrendReport>('trend_scout', 1));
+  const latest = useApi(() => (SERVER_ENABLED && !local ? api.reports<TrendReport>('trend_scout', 1) : Promise.resolve([])));
   const ideas = useApi(() => api.ideas());
   const lib = useApi(api.trendLibrary);
   const [fresh, setFresh] = useState<TrendReport | null>(null);
@@ -81,6 +82,8 @@ export default function TrendsScreen() {
 
       {ideas.data && ideas.data.length ? <IdeaList ideas={ideas.data} cur={cur} onChange={ideas.refresh} /> : null}
 
+      {aiAvailable ? (
+      <>
       <Section title="Your exact niche" right={<Badge text="Pro · AI" tone="tint" />}>
         <T kind="secondary">
           AI searches TikTok Shop, Amazon best-sellers, Google Trends and competitor stores for exactly what you sell.
@@ -105,6 +108,10 @@ export default function TrendsScreen() {
         </Card>
       )}
 
+      </>
+      ) : (
+        <T kind="muted">The trends list updates by itself every few weeks; open this tab with internet to get the latest.</T>
+      )}
       {running ? <Working text="Searching TikTok Shop, Amazon, Google Trends and competitor stores…" /> : null}
       {error ? <ErrorBox error={error} onRetry={scan} /> : null}
 
@@ -220,7 +227,7 @@ function Library({ lib, have, onAdd }: { lib: TrendLibrary; have: (name: string)
             <Button
               title="Check it"
               kind="secondary"
-              onPress={() => router.push({ pathname: '/calculator', params: { name: it.name, price: String(priceFromHint(it.price_hint) ?? '') } })}
+              onPress={() => router.push({ pathname: '/ai/product-check', params: { idea: it.name, price: String(priceFromHint(it.price_hint) ?? '') } })}
             />
           </Row>
         </Card>

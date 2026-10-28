@@ -2,8 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { startLocal, wipeLocal, type LocalHandle } from '@/local/api';
 
-import { api, setAuthToken, setLocalApi, setUnauthorizedHandler } from './api';
-import { identifyPurchaser, resetPurchaser } from './purchases';
+import { api, SERVER_ENABLED, setAuthToken, setLocalApi, setUnauthorizedHandler } from './api';
+import { hasProOnThisDevice, identifyPurchaser, resetPurchaser } from './purchases';
 import { tokenStore } from './token-store';
 import type { User } from './types';
 
@@ -40,6 +40,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLocalApi(localHandle.api);
     setLocal(true);
     setUser(await api.me());
+    // No server: Google Play (through RevenueCat) says whether this phone has Pro.
+    const pro = await hasProOnThisDevice();
+    if (pro !== null && localHandle) {
+      localHandle.setPlan(pro ? 'pro' : 'free');
+      setUser(await api.me());
+    }
   }, []);
 
   const signOut = useCallback(async () => {
@@ -72,7 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUnauthorizedHandler(() => void signOut());
     (async () => {
       try {
-        if ((await tokenStore.get(MODE_KEY)) === 'local') {
+        // A build without a server always runs on the phone; otherwise the seller chose it.
+        if (!SERVER_ENABLED || (await tokenStore.get(MODE_KEY)) === 'local') {
           await enterLocal();
           return;
         }

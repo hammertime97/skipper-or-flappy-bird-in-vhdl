@@ -25,6 +25,8 @@ import { Engine as E, ENGINE_CONFIG as CFG, type Analysis, type Extracted, type 
 import * as storage from './store';
 
 const FREE_FORECAST_PRODUCTS = 10;
+const TRENDS_URL = (process.env.EXPO_PUBLIC_TRENDS_URL ?? '').trim();
+const TRENDS_MAX_AGE = 24 * 3600 * 1000; // look for a newer list at most once a day
 const PREVIEW_ROWS = 4;
 const DAY = E.DAY;
 
@@ -68,14 +70,22 @@ const notFound = () => new ApiError('Not found', 404);
 const iso = (t: number | null | undefined) => (t == null ? null : new Date(t).toISOString());
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
+// On the phone, Pro unlocks the forecast-based features for every product (Free covers the top sellers).
 const PLANS: BillingStatus['plans'] = {
   free: {
     name: 'Free',
-    features: ['Inventory & sales dashboard', `Weekly forecasts for your top ${FREE_FORECAST_PRODUCTS} products`, 'Weekly to-do plan, money makers, calculator, trends'],
+    features: [
+      'Dashboard, stock, imports, trends, calculator, product check, instant answers and listing drafts',
+      `Forecasts, reorder dates and supplier orders for your top ${FREE_FORECAST_PRODUCTS} products`,
+    ],
   },
   pro: {
     name: 'Pro',
-    features: ['Weekly forecasts for every product', 'AI Weekly Plan every week', "Live Trend Scout for your exact niche", 'AI Product Check, assistant and listing writer'],
+    features: [
+      'Forecasts and reorder dates for every product',
+      'Weekly plan and supplier orders covering your whole store',
+      'Everything in Free',
+    ],
   },
 };
 
@@ -423,7 +433,7 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
       return { ...plan, store_forecast: F.store, events: F.events };
     },
     trendLibrary: async (): Promise<TrendLibrary> => {
-      const lib = CFG.trend_library, t = (store.user.niche || '').toLowerCase();
+      const lib = await latestTrends(), t = (store.user.niche || '').toLowerCase();
       let match: string | null = null, best = 0;
       for (const n of lib.niches) {
         const score = n.keywords.filter((k) => t.includes(k)).length;
@@ -449,6 +459,29 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
   };
   const sampleFor = new Map<number, SampleBundle>();
 
+  /** The newest trends list we have: downloaded (when online), else the last download, else the one in the app. */
+  async function latestTrends(): Promise<typeof CFG.trend_library> {
+    const bundled = CFG.trend_library;
+    const cached = await storage.loadTrends();
+    let best = cached && isLibrary(cached.lib) && cached.lib.researched_on >= bundled.researched_on ? cached.lib : bundled;
+    if (TRENDS_URL && (!cached || Date.now() - cached.fetchedAt > TRENDS_MAX_AGE)) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 6000);
+        const res = await fetch(TRENDS_URL, { signal: ctrl.signal });
+        clearTimeout(timer);
+        const remote: unknown = res.ok ? await res.json() : null;
+        if (isLibrary(remote)) {
+          await storage.saveTrends({ fetchedAt: Date.now(), lib: remote });
+          if (remote.researched_on >= best.researched_on) best = remote;
+        }
+      } catch {
+        // Offline or slow: use what we have.
+      }
+    }
+    return best;
+  }
+
   return {
     api,
     setPlan: (p) => {
@@ -459,3 +492,20 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
 }
 
 export const wipeLocal = storage.wipe;
+
+/** A downloaded trends list must have the shape the app expects before we show it. */
+function isLibrary(v: unknown): v is typeof CFG.trend_library {
+  const lib = v as { researched_on?: unknown; niches?: unknown; holiday?: unknown } | null;
+  return (
+    !!lib &&
+    typeof lib.researched_on === 'string' &&
+    !!lib.holiday &&
+    Array.isArray(lib.niches) &&
+    lib.niches.length > 0 &&
+    lib.niches.every(
+      (n: { key?: unknown; name?: unknown; keywords?: unknown; summary?: unknown; items?: unknown }) =>
+        typeof n.key === 'string' && typeof n.name === 'string' && Array.isArray(n.keywords) && Array.isArray(n.items) &&
+        (n.items as { name?: unknown; source?: unknown }[]).every((it) => typeof it.name === 'string' && typeof it.source === 'string'),
+    )
+  );
+}

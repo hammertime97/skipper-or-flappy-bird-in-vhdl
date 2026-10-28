@@ -9,17 +9,17 @@ import { Spacing } from '@/constants/theme';
 import { useAiRun } from '@/hooks/use-ai';
 import { useApi } from '@/hooks/use-api';
 import { useTheme } from '@/hooks/use-theme';
-import { api } from '@/lib/api';
+import { api, SERVER_ENABLED } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ago, money } from '@/lib/format';
 import type { WeeklyBriefReport } from '@/lib/types';
 
 export default function WeeklyPlan() {
   const c = useTheme();
-  const { user } = useAuth();
+  const { user, local } = useAuth();
   const cur = user?.currency ?? 'USD';
   const smart = useApi(api.plan);
-  const latest = useApi(() => api.reports<WeeklyBriefReport>('weekly_brief', 1));
+  const latest = useApi(() => (SERVER_ENABLED && !local ? api.reports<WeeklyBriefReport>('weekly_brief', 1) : Promise.resolve([])));
   const [fresh, setFresh] = useState<WeeklyBriefReport | null>(null);
   const { run, running, error } = useAiRun(api.weeklyBrief);
   const report = fresh ?? latest.data?.[0] ?? null;
@@ -30,6 +30,7 @@ export default function WeeklyPlan() {
   };
 
   const plan = smart.data;
+  const aiAvailable = SERVER_ENABLED && !local;
   const sharePlan = () => {
     if (!plan) return;
     const lines = [`This week's plan${user?.store_name ? ` for ${user.store_name}` : ''}`, '', plan.summary, '', ...plan.actions.map((a) => `• ${a.title}`)];
@@ -73,6 +74,7 @@ export default function WeeklyPlan() {
         </>
       ) : null}
 
+      {aiAvailable ? (
       <Card style={{ gap: Spacing.sm }}>
         <T style={{ fontWeight: '700' }}>Want a second opinion?</T>
         <T kind="secondary">
@@ -82,6 +84,7 @@ export default function WeeklyPlan() {
         <Button title={report ? 'Check again with AI' : 'Check with AI'} kind="secondary" onPress={generate} loading={running} />
         <T kind="muted">Takes 1–2 minutes. Uses 1 AI request.</T>
       </Card>
+      ) : null}
       {running ? <Working text="Reading your sales and forecasts, and checking upcoming events and news. This takes 1–2 minutes." /> : null}
       {error ? <ErrorBox error={error} onRetry={generate} /> : null}
 

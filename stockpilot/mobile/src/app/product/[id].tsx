@@ -116,7 +116,7 @@ export default function ProductScreen() {
           />
         </Row>
         {actionError ? <ErrorBox error={actionError} /> : null}
-        <Button title="Write listing with AI" kind="secondary" onPress={() => router.push({ pathname: '/ai/listing', params: { productId: String(p.id) } })} />
+        <Button title="Write a listing" kind="secondary" onPress={() => router.push({ pathname: '/ai/listing', params: { productId: String(p.id) } })} />
         <Button title="Edit product" kind="secondary" onPress={() => router.push({ pathname: '/product/edit', params: { id: String(p.id) } })} />
         <Button
           title="Archive product"

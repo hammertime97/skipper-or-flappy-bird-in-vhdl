@@ -23,6 +23,7 @@ from app.models import Product, Sale  # noqa: E402
 from app.forecasting import forecast_weekly, weekly_buckets  # noqa: E402
 
 DIST = HERE / "dist"
+SAMPLE_DATE = datetime(2026, 10, 27, tzinfo=timezone.utc)
 
 
 def config() -> dict:
@@ -43,10 +44,12 @@ def config() -> dict:
 def sample_bundle() -> list[dict]:
     out = []
     for key, store in samples.STORES.items():
-        fn, data = samples.build(key)
+        # A fixed date keeps the generated files identical between builds; the apps move
+        # sample dates so the newest sale is always yesterday.
+        fn, data = samples.build(key, now=SAMPLE_DATE)
         files = [{"name": fn, "b64": base64.b64encode(data).decode()}]
         if key == "shopify":
-            files.append(dict(zip(("name", "b64"), _b64(*samples.build("shopify-products")))))
+            files.append(dict(zip(("name", "b64"), _b64(*samples.build("shopify-products", now=SAMPLE_DATE)))))
         elif key != "spreadsheet":
             files.append(dict(zip(("name", "b64"), _b64(*samples.stock_csv(key)))))
         out.append({"key": key, "platform": store.platform, "title": store.title, "store_name": store.store_name,
@@ -130,6 +133,11 @@ def mobile_files(engine: str) -> None:
     (out / "engine.d.ts").write_text(note + "// The engine sets globalThis.Engine; see mobile/src/local/engine.ts for its types.\nexport {};\n")
     (out / "engine-config.json").write_text(json.dumps(config()))
     (out / "samples.json").write_text(json.dumps(sample_bundle()))
+    # The trends list the app downloads (EXPO_PUBLIC_TRENDS_URL points at this file on GitHub),
+    # so updating trends needs no app release and no server: edit trend_library.py, rebuild, push.
+    lib = {k: v for k, v in trend_library.library_payload().items() if k != "match"}
+    (HERE.parent / "trends").mkdir(exist_ok=True)
+    (HERE.parent / "trends" / "trend-library.json").write_text(json.dumps(lib, indent=1, ensure_ascii=False) + "\n")
 
 
 def main() -> None:

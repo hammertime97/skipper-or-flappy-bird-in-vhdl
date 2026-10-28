@@ -4,19 +4,22 @@ import { FlatList, KeyboardAvoidingView, Platform, View } from 'react-native';
 import { Button, Chips, ErrorBox, Input, Loading, Row, T } from '@/components/ui';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAiRun } from '@/hooks/use-ai';
+import { useApi } from '@/hooks/use-api';
 import { useTheme } from '@/hooks/use-theme';
-import { api } from '@/lib/api';
+import { api, SERVER_ENABLED } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { answerQuestion, HELP, STARTERS, type StoreData } from '@/lib/offline-tools';
 import type { ChatTurn } from '@/lib/types';
-
-const STARTERS = [
-  'What should I reorder this week?',
-  'Which product made the most profit this month?',
-  'What is not selling and how much cash is tied up in it?',
-  'How did this week compare to last week?',
-];
 
 export default function Assistant() {
   const c = useTheme();
+  const { user, local } = useAuth();
+  const aiAvailable = SERVER_ENABLED && !local;
+  // The seller's own numbers, so most questions are answered instantly on the phone.
+  const store = useApi(async (): Promise<StoreData> => {
+    const [fc, dash, ins, products] = await Promise.all([api.forecasts(), api.dashboard(), api.insights(), api.products()]);
+    return { fc, dash, ins, products, cur: user?.currency ?? 'USD' };
+  });
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [text, setText] = useState('');
   const { run, running, error } = useAiRun(api.ask);
@@ -28,6 +31,12 @@ export default function Assistant() {
     const history = turns;
     setTurns([...history, { role: 'user', content: question }]);
     setText('');
+    const instant = store.data ? answerQuestion(question, store.data) : null;
+    if (instant || !aiAvailable) {
+      const reply = instant ?? (store.data ? HELP : 'Still loading your numbers. Ask again in a second.');
+      setTurns((t) => [...t, { role: 'assistant', content: reply }]);
+      return;
+    }
     const res = await run(question, history);
     if (res) setTurns((t) => [...t, { role: 'assistant', content: res.answer }]);
     else setTurns(history); // put the question back on failure
@@ -45,7 +54,9 @@ export default function Assistant() {
         ListHeaderComponent={
           turns.length === 0 ? (
             <View style={{ gap: Spacing.md }}>
-              <T kind="secondary">Ask anything about your store. Answers use your live sales, stock and forecasts.</T>
+              <T kind="secondary">
+                Ask about your store. Answers come straight from your sales, stock and forecasts, instantly{aiAvailable ? ', with AI for anything else' : ''}.
+              </T>
               {STARTERS.map((s) => (
                 <Button key={s} title={s} kind="secondary" onPress={() => send(s)} />
               ))}
@@ -75,7 +86,7 @@ export default function Assistant() {
       />
       <View style={{ padding: Spacing.md, borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface, gap: Spacing.sm }}>
         {turns.length > 0 ? (
-          <Chips value={'' as string} onChange={(v) => send(v)} options={STARTERS.slice(0, 3).map((s) => ({ value: s, label: s }))} />
+          <Chips value={'' as string} onChange={(v) => send(v)} options={STARTERS.map((s) => ({ value: s, label: s }))} />
         ) : null}
         <Row>
           <View style={{ flex: 1 }}>

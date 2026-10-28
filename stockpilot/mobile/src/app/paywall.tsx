@@ -5,7 +5,7 @@ import type { PurchasesPackage } from 'react-native-purchases';
 
 import { Bullets, Button, Card, ErrorBox, Loading, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
-import { api } from '@/lib/api';
+import { api, SERVER_ENABLED } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { buy, getPackages, purchasesAvailable, restore } from '@/lib/purchases';
 
@@ -51,7 +51,12 @@ export default function Paywall() {
     setBusy(pkg.identifier);
     setError(null);
     try {
-      if (await buy(pkg)) await waitForServer();
+      if (await buy(pkg)) {
+        if (local) {
+          await setLocalPlan('pro');
+          router.back();
+        } else await waitForServer();
+      }
     } catch (e) {
       setError(e as Error);
     } finally {
@@ -63,8 +68,12 @@ export default function Paywall() {
     setBusy('restore');
     setError(null);
     try {
-      if (await restore()) await waitForServer();
-      else setError(new Error('No active subscription found for this Google account.'));
+      if (await restore()) {
+        if (local) {
+          await setLocalPlan('pro');
+          router.back();
+        } else await waitForServer();
+      } else setError(new Error('No active subscription found for this Google account.'));
     } catch (e) {
       setError(e as Error);
     } finally {
@@ -76,7 +85,11 @@ export default function Paywall() {
     <Screen edges={[]}>
       <View style={{ gap: Spacing.xs }}>
         <T kind="title">{isPro ? 'You’re on Pro' : 'Sell smarter with Pro'}</T>
-        <T kind="secondary">Forecast every product, get your AI plan every week, and spot trends before your competitors.</T>
+        <T kind="secondary">
+          {SERVER_ENABLED
+            ? 'Forecast every product, get your AI plan every week, and spot trends before your competitors.'
+            : 'Forecasts, reorder dates and supplier orders for every product you sell, not just your top 10.'}
+        </T>
       </View>
 
       {plans ? (
@@ -87,7 +100,7 @@ export default function Paywall() {
         </Card>
       ) : null}
 
-      {local ? (
+      {local && !purchasesAvailable() ? (
         <Card style={{ gap: Spacing.sm }}>
           <T style={{ fontWeight: '700' }}>Test build</T>
           <T kind="secondary">

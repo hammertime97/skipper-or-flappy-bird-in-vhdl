@@ -25,7 +25,12 @@ import { ApiError } from './api-error';
 
 export { ApiError };
 
-export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://10.0.2.2:8000').replace(/\/$/, '');
+/**
+ * The StockPilot server, if this build has one. Without it the app runs entirely on the phone
+ * (on-phone mode): everything works except accounts and the AI features.
+ */
+export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? '').trim().replace(/\/$/, '');
+export const SERVER_ENABLED = API_URL.length > 0;
 
 let authToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;

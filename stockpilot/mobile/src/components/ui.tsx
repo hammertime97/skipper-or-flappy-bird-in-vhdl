@@ -244,6 +244,14 @@ export function ErrorBox({ error, onRetry }: { error: ApiError | Error | string;
   const c = useTheme();
   const message = typeof error === 'string' ? error : error.message;
   const needsUpgrade = typeof error !== 'string' && 'needsUpgrade' in error && error.needsUpgrade;
+  const note = typeof error !== 'string' && 'code' in error && error.code === 'needs_server';
+  if (note) {
+    return (
+      <Card style={{ gap: Spacing.sm }}>
+        <T kind="secondary">{message}</T>
+      </Card>
+    );
+  }
   return (
     <Card style={{ borderColor: c.critical, gap: Spacing.sm }}>
       <T>{message}</T>

@@ -4,7 +4,7 @@ import { Alert, View } from 'react-native';
 
 import { Badge, Button, Card, ErrorBox, Input, Row, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
-import { api } from '@/lib/api';
+import { api, SERVER_ENABLED } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 export default function AccountScreen() {
@@ -85,7 +85,7 @@ export default function AccountScreen() {
           </Row>
           <T kind="secondary">
             {local
-              ? 'On-phone mode: AI features need an account.'
+              ? SERVER_ENABLED ? 'On-phone mode: AI features need an account.' : 'Everything runs on this phone.'
               : `${b.ai_calls_used} of ${b.ai_calls_limit} AI requests used this month`}
             {b.plan_expires_at ? ` · renews or ends ${new Date(b.plan_expires_at).toLocaleDateString()}` : ''}
           </T>
@@ -114,7 +114,7 @@ export default function AccountScreen() {
               ])
             }
           />
-          <Button title="Leave on-phone mode" kind="secondary" onPress={signOut} />
+          {SERVER_ENABLED ? <Button title="Leave on-phone mode" kind="secondary" onPress={signOut} /> : null}
         </View>
       ) : (
         <View style={{ gap: Spacing.sm }}>
