@@ -18,18 +18,27 @@ expect() { # wait up to $2 seconds for text $1 to be on screen
 }
 read -r W H < <(adb shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -1 | tr x ' ')
 swipe_up() { adb shell input swipe $((W / 2)) $((H * 7 / 10)) $((W / 2)) $((H * 3 / 10)) 300; sleep 1; }
-tap() { # tap the element labelled $1, scrolling down to find it if needed
-  for _ in 1 2 3 4 5 6 7; do
-    dump
-    if read -r x y < <(python3 "$HERE/ui.py" center "$OUT/ui.xml" "$1"); then adb shell input tap "$x" "$y"; sleep "${2:-2}"; return 0; fi
-    swipe_up
+swipe_down() { adb shell input swipe $((W / 2)) $((H * 3 / 10)) $((W / 2)) $((H * 7 / 10)) 300; sleep 1; }
+locate_el() { # look for $1 on screen, scrolling down, then back up; prints "x y"
+  for dir in down up; do
+    for _ in 1 2 3 4 5 6 7 8; do
+      dump
+      python3 "$HERE/ui.py" center "$OUT/ui.xml" "$1" && return 0
+      if [ "$dir" = down ]; then swipe_up; else swipe_down; fi
+    done
   done
-  echo "--- screen ---"; python3 "$HERE/ui.py" texts "$OUT/ui.xml" | head -60; fail "nothing to tap called \"$1\""
+  return 1
 }
-seek() { # like expect, but scrolls down to find it
-  for _ in 1 2 3 4 5 6 7 8; do dump; python3 "$HERE/ui.py" center "$OUT/ui.xml" "$1" >/dev/null && return 0; swipe_up; done
-  echo "--- screen ---"; python3 "$HERE/ui.py" texts "$OUT/ui.xml" | head -60; fail "did not find \"$1\""
+tap() { # tap the element labelled $1, scrolling to find it if needed
+  local pos
+  pos=$(locate_el "$1") || { echo "--- screen ---"; python3 "$HERE/ui.py" texts "$OUT/ui.xml" | head -60; fail "nothing to tap called \"$1\""; }
+  adb shell input tap $pos; sleep "${2:-2}"
 }
+seek() { # wait for $1 to load, then scroll to find it
+  sleep "${2:-2}"
+  locate_el "$1" >/dev/null || { echo "--- screen ---"; python3 "$HERE/ui.py" texts "$OUT/ui.xml" | head -60; fail "did not find \"$1\""; }
+}
+
 screen() { dump; echo "=== $1 ==="; python3 "$HERE/ui.py" texts "$OUT/ui.xml" | head -40; }
 
 adb install -r "$APK" || fail "install failed"
@@ -46,13 +55,13 @@ tap "Add to my store" 3
 tap "Tools" 3; expect "Supplier orders" 30; shot tools
 tap "See what to order" 6; expect "Total at cost price" 60; alive; shot orders; screen "Supplier orders"
 adb shell input keyevent KEYCODE_BACK; sleep 2
-tap "Open this week" 6; expect "Do this week" 60; shot weekly-plan; screen "Weekly plan"
+tap "Open this week" 6; expect "Weekly Plan" 60; seek "Do this week"; shot weekly-plan; screen "Weekly plan"
 tap "Check with AI" 4; seek "AI features run on StockPilot"; shot ai-needs-server
 adb shell input keyevent KEYCODE_BACK; sleep 2
-tap "Home" 3; tap "Account" 3; expect "Import sales or stock" 20
+tap "Home" 3; tap "Account" 3; expect "Your store" 20
 tap "Import sales or stock" 3; expect "Where do you sell?" 20
-tap "Amazon" 3; tap "No file yet? Try a sample" 10; expect "Looks right: import" 60; shot import-preview; screen "Import preview"
-tap "Looks right: import" 8; expect "Done" 60; alive; shot import-done; screen "Import done"
+tap "Amazon" 3; tap "No file yet? Try a sample" 10; seek "Looks right: import" 5; shot import-preview; screen "Import preview"
+tap "Looks right: import" 8; seek "See my dashboard" 3; alive; shot import-done; screen "Import done"
 # Pick a real file through Android's file picker (best effort: the picker's layout differs by Android version).
 printf 'Date,Product,Qty,Price\n2026-10-20,Phone test mug,2,9.99\n2026-10-21,Phone test mug,1,9.99\n' > "$OUT/phone-test.csv"
 adb push "$OUT/phone-test.csv" /sdcard/Download/phone-test.csv >/dev/null
@@ -64,7 +73,7 @@ for target in "phone-test.csv" "Show roots" "Downloads" "phone-test.csv"; do
   if python3 "$HERE/ui.py" center "$OUT/ui.xml" "$target" >/dev/null; then tap "$target" 3; [ "$target" = phone-test.csv ] && picked=yes && break; fi
 done
 if [ "$picked" = yes ]; then
-  expect "Looks right: import" 30; screen "Own file preview"; tap "Looks right: import" 6; expect "Done" 30; shot own-file-done; screen "Own file imported"
+  seek "Looks right: import" 5; screen "Own file preview"; tap "Looks right: import" 6; seek "See my dashboard" 3; shot own-file-done; screen "Own file imported"
 else
   echo "NOTE: could not drive the system file picker on this emulator; skipped the own-file step."; screen "Picker"; adb shell input keyevent KEYCODE_BACK; sleep 2
 fi
