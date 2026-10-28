@@ -171,7 +171,7 @@ export default function ImportScreen() {
             <Card style={{ gap: Spacing.sm }}>
               <T style={{ fontWeight: '700' }}>Next: how many do you have?</T>
               <T kind="secondary">
-                Sales files don&apos;t include stock. Type the stock for {result.needs_stock.length} products and we&apos;ll
+                Sales files don&apos;t include stock. Type the stock for {result.needs_stock.length === 1 ? '1 product' : `${result.needs_stock.length} products`} and we&apos;ll
                 tell you what to reorder and when. Dropshipping? Use your supplier&apos;s stock, or skip this.
               </T>
               <Button title="Add stock counts" onPress={() => router.replace('/stock-counts')} />
@@ -180,7 +180,7 @@ export default function ImportScreen() {
           {result.needs_cost.length ? (
             <Card style={{ gap: Spacing.sm }}>
               <T style={{ fontWeight: '700' }}>Then: what do you pay per item?</T>
-              <T kind="secondary">Add the cost for {result.needs_cost.length} products so your profit is right.</T>
+              <T kind="secondary">Add the cost for {result.needs_cost.length === 1 ? '1 product' : `${result.needs_cost.length} products`} so your profit is right.</T>
               <Button title="Add costs" kind="secondary" onPress={() => router.replace({ pathname: '/stock-counts', params: { tab: 'cost' } })} />
             </Card>
           ) : null}

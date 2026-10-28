@@ -694,8 +694,8 @@
     const dead = products.filter((p) => p.stock_qty > 0 && st[p.id].units_30d === 0);
     const unknown = products.filter((p) => !p.stock_known), costMissing = products.filter((p) => p.cost_price <= 0 && st[p.id].units_30d > 0);
     const todo = [];
-    if (unknown.length) todo.push({ key: 'stock', count: unknown.length, text: `Add stock counts for ${unknown.length} products to get reorder advice.` });
-    if (costMissing.length) todo.push({ key: 'cost', count: costMissing.length, text: `Add what you pay per item for ${costMissing.length} products so profit is correct.` });
+    if (unknown.length) todo.push({ key: 'stock', count: unknown.length, text: `Add stock counts for ${plural(unknown.length, 'product')} to get reorder advice.` });
+    if (costMissing.length) todo.push({ key: 'cost', count: costMissing.length, text: `Add what you pay per item for ${plural(costMissing.length, 'product')} so profit is correct.` });
     const pos = (p) => Math.max(0, p.stock_qty);
     return {
       kpis, daily, stats: st, todo,
@@ -826,8 +826,8 @@
     }
     for (const it of items) { const p = it.product, plan = it.stock_plan; if (plan.status === 'low' && plan.order_by) add('medium', 'reorder', `Plan an order of ${plan.reorder_qty} × ${p.name} ${when(plan.order_by)}`, plan.reason, p.sku); }
     const unknown = items.filter((it) => it.stock_plan.status === 'stock_unknown');
-    if (unknown.length) add('medium', 'setup', `Add stock counts for ${unknown.length} products`, "Without them we can't tell you when to reorder. It takes a minute on the Stock & costs screen.");
-    if (dash.inventory.cost_missing) add('medium', 'setup', `Add your cost per item for ${dash.inventory.cost_missing} products`, 'Profit and the restock budget need what you pay per item.');
+    if (unknown.length) add('medium', 'setup', `Add stock counts for ${plural(unknown.length, 'product')}`, "Without them we can't tell you when to reorder. It takes a minute on the Stock & costs screen.");
+    if (dash.inventory.cost_missing) add('medium', 'setup', `Add your cost per item for ${plural(dash.inventory.cost_missing, 'product')}`, 'Profit and the restock budget need what you pay per item.');
     const rising = items.filter((it) => it.forecast.trend === 'rising' && (it.forecast.accuracy || 0) >= 0.55).sort((a, b) => b.next_week_revenue - a.next_week_revenue).slice(0, 2);
     for (const it of rising) { const pc = Math.round(it.forecast.trend_pct * 100); add('medium', 'promote', `Push ${it.product.name}: sales up ${pc}%`, `Sales rose ${pc}% over the last 4 weeks. A short video or a featured spot could add to it.`, it.product.sku); }
     const top = [...items].sort((a, b) => b.next_week_revenue - a.next_week_revenue).slice(0, 3);

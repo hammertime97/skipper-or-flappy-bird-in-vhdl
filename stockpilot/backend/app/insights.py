@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 from itertools import combinations
 
 from . import fees as fees_mod
+from .importer import plural
 from .models import Product, Sale
 
 SYMBOLS = {"USD": "$", "GBP": "£", "EUR": "€", "AUD": "A$", "CAD": "C$"}
@@ -166,10 +167,10 @@ def smart_plan(forecast: dict, dashboard: dict, focus: dict, bundle_data: dict, 
 
     unknown = [it for it in items if it["stock_plan"]["status"] == "stock_unknown"]
     if unknown:
-        add("medium", "setup", f"Add stock counts for {len(unknown)} products",
+        add("medium", "setup", f"Add stock counts for {plural(len(unknown), 'product')}",
             "Without them we can't tell you when to reorder. It takes a minute on the Stock & costs screen.")
     if dashboard["inventory"].get("cost_missing"):
-        add("medium", "setup", f"Add your cost per item for {dashboard['inventory']['cost_missing']} products",
+        add("medium", "setup", f"Add your cost per item for {plural(dashboard['inventory']['cost_missing'], 'product')}",
             "Profit and the restock budget need what you pay per item.")
 
     rising = sorted(

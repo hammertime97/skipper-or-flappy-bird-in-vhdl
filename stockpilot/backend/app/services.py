@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 
 from . import fees
 from .forecasting import forecast_weekly, plan_stock, upcoming_events, weekly_buckets
+from .importer import plural
 from .models import Product, Sale, User, utcnow
 
 HISTORY_WEEKS = 104  # two years, so "same time last year" can be used
@@ -178,12 +179,12 @@ def _todo(stock_unknown: list[Product], cost_missing: list[Product]) -> list[dic
     if stock_unknown:
         out.append({
             "key": "stock", "count": len(stock_unknown),
-            "text": f"Add stock counts for {len(stock_unknown)} products to get reorder advice.",
+            "text": f"Add stock counts for {plural(len(stock_unknown), 'product')} to get reorder advice.",
         })
     if cost_missing:
         out.append({
             "key": "cost", "count": len(cost_missing),
-            "text": f"Add what you pay per item for {len(cost_missing)} products so profit is correct.",
+            "text": f"Add what you pay per item for {plural(len(cost_missing), 'product')} so profit is correct.",
         })
     return out
 
