@@ -80,7 +80,7 @@ fi
 alive
 # Reopen the app: on-phone data must still be there.
 adb shell am force-stop "$PKG"; sleep 2; adb shell am start -n "$PKG/.MainActivity"
-expect "Profit after fees" 90; shot reopened; screen "After reopening"
+expect "This week's plan" 90; seek "Profit after fees"; shot reopened; screen "After reopening"
 adb logcat -d -s ReactNativeJS:V AndroidRuntime:E > "$OUT/logcat.txt"
 if grep -E "FATAL EXCEPTION|Unhandled (JS )?Exception|TypeError|ReferenceError" "$OUT/logcat.txt"; then fail "errors in the log"; fi
 echo "SMOKE OK"
