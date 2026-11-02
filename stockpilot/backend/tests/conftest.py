@@ -6,6 +6,9 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["JWT_SECRET"] = "test-secret-that-is-long-enough-for-hs256"
 os.environ["REVENUECAT_WEBHOOK_SECRET"] = "rc-secret"
 os.environ["FREE_AI_CALLS_PER_MONTH"] = "2"
+# Small plan limits so the tests can reach them with the 14-product demo store.
+os.environ["FREE_FORECAST_PRODUCTS"] = "10"
+os.environ["PRO_FORECAST_PRODUCTS"] = "12"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

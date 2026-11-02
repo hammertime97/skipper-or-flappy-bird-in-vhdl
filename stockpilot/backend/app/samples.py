@@ -11,6 +11,7 @@ import csv
 import io
 import math
 import random
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -27,6 +28,8 @@ class SampleProduct:
     stock: int
     lead_days: int
     item_id: str = ""
+    category: str = ""
+    supplier: str = ""
 
 
 @dataclass(frozen=True)
@@ -115,6 +118,181 @@ STORES: dict[str, SampleStore] = {
         ),
     ]
 }
+
+# ---------------------------------------------------------------------------------------------
+# A big store: about 550 products, many of them variants of each other (sizes, colours, models),
+# with a few best sellers and a long tail of slow ones, like a real established eBay shop.
+# ---------------------------------------------------------------------------------------------
+
+# (family code, name, price, cost share, category, supplier, lead days, variant axes)
+_FAMILIES: list[tuple[str, str, float, float, str, str, int, list[list[tuple[str, str]]]]] = [
+    ("PC", "Silicone Phone Case", 12.99, 0.18, "Phone accessories", "Shenzhen MobileGear", 14,
+     [[("IP16", "iPhone 16"), ("IP16P", "iPhone 16 Pro"), ("IP15", "iPhone 15"), ("IP15P", "iPhone 15 Pro"), ("IP14", "iPhone 14"), ("S24", "Galaxy S24"), ("PX8", "Pixel 8"), ("IP13", "iPhone 13")],
+      [("BLK", "Black"), ("BLU", "Navy Blue"), ("PNK", "Pink"), ("CLR", "Clear"), ("GRN", "Sage Green")]]),
+    ("SP", "Tempered Glass Screen Protector 2-Pack", 9.99, 0.12, "Phone accessories", "Shenzhen MobileGear", 14,
+     [[("IP16", "iPhone 16"), ("IP16P", "iPhone 16 Pro"), ("IP15", "iPhone 15"), ("IP15P", "iPhone 15 Pro"), ("IP14", "iPhone 14"), ("S24", "Galaxy S24"), ("PX8", "Pixel 8"), ("IP13", "iPhone 13"), ("S23", "Galaxy S23"), ("A54", "Galaxy A54")]]),
+    ("CB", "USB-C Fast Charging Cable", 8.99, 0.15, "Phone accessories", "Shenzhen MobileGear", 14,
+     [[("1M", "1m"), ("2M", "2m"), ("3M", "3m")], [("BLK", "Black"), ("WHT", "White"), ("RED", "Red")]]),
+    ("WC", "Wireless Charging Pad 15W", 19.99, 0.28, "Phone accessories", "Shenzhen MobileGear", 18,
+     [[("BLK", "Black"), ("WHT", "White"), ("WOD", "Walnut Wood")]]),
+    ("CM", "Magnetic Car Phone Mount", 15.99, 0.22, "Phone accessories", "Shenzhen MobileGear", 18,
+     [[("VNT", "Air Vent"), ("DSH", "Dashboard"), ("WSH", "Windshield")], [("BLK", "Black"), ("SLV", "Silver")]]),
+    ("EB", "Bluetooth Earbuds with Charging Case", 29.99, 0.33, "Audio", "Dongguan SoundTech", 21,
+     [[("BLK", "Black"), ("WHT", "White"), ("NVY", "Navy"), ("PNK", "Blush Pink")]]),
+    ("WB", "Insulated Stainless Steel Water Bottle", 21.99, 0.27, "Kitchen", "Yongkang HomeWare", 25,
+     [[("500", "500ml"), ("750", "750ml"), ("1L", "1L")], [("BLK", "Matte Black"), ("WHT", "White"), ("SAG", "Sage"), ("LAV", "Lavender"), ("TEA", "Teal"), ("SND", "Sand")]]),
+    ("BM", "Silicone Baking Mat", 11.99, 0.2, "Kitchen", "Yongkang HomeWare", 21,
+     [[("HS", "Half Sheet"), ("QS", "Quarter Sheet"), ("RD", "Round 9in")], [("RED", "Red"), ("GRY", "Grey")]]),
+    ("CBD", "Bamboo Cutting Board", 18.99, 0.26, "Kitchen", "Fujian Bamboo Co", 30,
+     [[("S", "Small"), ("M", "Medium"), ("L", "Large"), ("XL", "Extra Large")]]),
+    ("MP", "Glass Meal Prep Containers", 27.99, 0.31, "Kitchen", "Yongkang HomeWare", 25,
+     [[("5PK", "5 Pack"), ("10PK", "10 Pack")], [("1C", "1 Compartment"), ("2C", "2 Compartment"), ("3C", "3 Compartment")]]),
+    ("SJ", "Glass Spice Jars with Labels", 24.99, 0.24, "Kitchen", "Yongkang HomeWare", 25,
+     [[("12", "12 Jars"), ("24", "24 Jars"), ("36", "36 Jars")]]),
+    ("KN", "Chef Knife High Carbon Steel", 34.99, 0.3, "Kitchen", "Yangjiang Blades", 30,
+     [[("6IN", "6in"), ("8IN", "8in"), ("10IN", "10in")]]),
+    ("LS", "LED Strip Lights with Remote", 16.99, 0.21, "Home", "Zhongshan Lighting", 18,
+     [[("5M", "5m"), ("10M", "10m"), ("15M", "15m"), ("20M", "20m")], [("RGB", "RGB"), ("WW", "Warm White")]]),
+    ("PL", "Velvet Throw Pillow Cover", 13.99, 0.17, "Home", "Shaoxing Textiles", 28,
+     [[("16", "16x16in"), ("18", "18x18in"), ("20", "20x20in"), ("24", "24x24in")], [("EMR", "Emerald"), ("MUS", "Mustard"), ("BLS", "Blush"), ("NVY", "Navy"), ("GRY", "Grey"), ("CRM", "Cream"), ("RST", "Rust"), ("TEL", "Teal")]]),
+    ("CT", "Blackout Curtain Panels (2)", 32.99, 0.3, "Home", "Shaoxing Textiles", 28,
+     [[("63", "63in"), ("84", "84in"), ("96", "96in")], [("BLK", "Black"), ("GRY", "Grey"), ("NVY", "Navy"), ("BEI", "Beige"), ("SAG", "Sage")]]),
+    ("TW", "Cotton Bath Towel Set", 39.99, 0.34, "Home", "Shaoxing Textiles", 28,
+     [[("4PC", "4 Piece"), ("6PC", "6 Piece")], [("WHT", "White"), ("GRY", "Grey"), ("SGE", "Sage"), ("NVY", "Navy")]]),
+    ("CN", "Soy Wax Scented Candle", 17.99, 0.2, "Home", "Ningbo Fragrance", 21,
+     [[("LAV", "Lavender"), ("VAN", "Vanilla"), ("SEA", "Sea Salt"), ("CIN", "Cinnamon"), ("FIG", "Fig"), ("PIN", "Pine"), ("RSE", "Rose"), ("CED", "Cedar")], [("8OZ", "8oz"), ("16OZ", "16oz")]]),
+    ("DH", "No-Pull Dog Harness", 24.99, 0.22, "Pet supplies", "Hangzhou PetCare", 21,
+     [[("XS", "XS"), ("S", "S"), ("M", "M"), ("L", "L"), ("XL", "XL")], [("BLK", "Black"), ("RED", "Red"), ("BLU", "Blue"), ("PNK", "Pink"), ("PUR", "Purple")]]),
+    ("DL", "Reflective Dog Leash 5ft", 14.99, 0.2, "Pet supplies", "Hangzhou PetCare", 21,
+     [[("BLK", "Black"), ("RED", "Red"), ("BLU", "Blue"), ("ORG", "Orange")]]),
+    ("CS", "Cat Scratching Post", 29.99, 0.32, "Pet supplies", "Hangzhou PetCare", 30,
+     [[("S", "Small"), ("M", "Medium"), ("L", "Tall")], [("BEI", "Beige"), ("GRY", "Grey")]]),
+    ("PB", "Calming Donut Pet Bed", 34.99, 0.3, "Pet supplies", "Hangzhou PetCare", 30,
+     [[("S", "Small"), ("M", "Medium"), ("L", "Large")], [("GRY", "Grey"), ("BRN", "Brown"), ("PNK", "Pink"), ("CRM", "Cream")]]),
+    ("RB", "Resistance Bands Set", 19.99, 0.18, "Fitness", "Xiamen FitPro", 21,
+     [[("LT", "Light"), ("MD", "Medium"), ("HV", "Heavy"), ("SET", "5-Band Set")]]),
+    ("YM", "Non-Slip Yoga Mat", 26.99, 0.29, "Fitness", "Xiamen FitPro", 25,
+     [[("6MM", "6mm"), ("10MM", "10mm")], [("PUR", "Purple"), ("BLK", "Black"), ("TEA", "Teal"), ("PNK", "Pink"), ("GRY", "Grey")]]),
+    ("DB", "Neoprene Dumbbells (Pair)", 22.99, 0.35, "Fitness", "Xiamen FitPro", 30,
+     [[("2LB", "2lb"), ("3LB", "3lb"), ("5LB", "5lb"), ("8LB", "8lb"), ("10LB", "10lb")]]),
+    ("JR", "Weighted Jump Rope", 14.99, 0.19, "Fitness", "Xiamen FitPro", 21,
+     [[("BLK", "Black"), ("BLU", "Blue"), ("PNK", "Pink")]]),
+    ("MB", "Makeup Brush Set", 18.99, 0.17, "Beauty", "Guangzhou BeautyLab", 18,
+     [[("10", "10 Piece"), ("14", "14 Piece")], [("BLK", "Black"), ("RSG", "Rose Gold"), ("PNK", "Pink")]]),
+    ("HC", "Claw Hair Clips", 9.99, 0.12, "Beauty", "Guangzhou BeautyLab", 14,
+     [[("4PK", "4 Pack"), ("6PK", "6 Pack"), ("8PK", "8 Pack")], [("NEU", "Neutral"), ("TRT", "Tortoise"), ("PST", "Pastel")]]),
+    ("SS", "Silk Pillowcase", 22.99, 0.25, "Beauty", "Shaoxing Textiles", 28,
+     [[("STD", "Standard"), ("QN", "Queen"), ("KG", "King")], [("CHM", "Champagne"), ("BLK", "Black"), ("BLS", "Blush"), ("SLV", "Silver")]]),
+    ("DO", "Bamboo Desk Organizer", 23.99, 0.28, "Office", "Fujian Bamboo Co", 30,
+     [[("3T", "3 Tier"), ("5S", "5 Slot"), ("DR", "With Drawer")]]),
+    ("NB", "Dotted A5 Notebook", 12.99, 0.16, "Office", "Ningbo Paper", 21,
+     [[("BLK", "Black"), ("NVY", "Navy"), ("SAG", "Sage"), ("TER", "Terracotta"), ("LAV", "Lavender"), ("MUS", "Mustard")]]),
+    ("LD", "Adjustable Laptop Stand", 29.99, 0.3, "Office", "Shenzhen MobileGear", 21,
+     [[("SLV", "Silver"), ("GRY", "Space Grey"), ("BLK", "Black")]]),
+    ("BP", "Water-Resistant Laptop Backpack", 44.99, 0.33, "Bags", "Quanzhou BagWorks", 30,
+     [[("15", "15.6in"), ("17", "17.3in")], [("BLK", "Black"), ("GRY", "Grey"), ("NVY", "Navy"), ("OLV", "Olive")]]),
+    ("TT", "Canvas Tote Bag", 15.99, 0.18, "Bags", "Quanzhou BagWorks", 25,
+     [[("NAT", "Natural"), ("BLK", "Black"), ("NVY", "Navy"), ("MUS", "Mustard"), ("SAG", "Sage")]]),
+    ("PS", "Outdoor Solar Path Lights", 27.99, 0.3, "Garden", "Zhongshan Lighting", 25,
+     [[("6PK", "6 Pack"), ("8PK", "8 Pack"), ("12PK", "12 Pack")], [("WW", "Warm White"), ("CLR", "Colour Changing")]]),
+    ("PT", "Ceramic Plant Pot with Saucer", 16.99, 0.24, "Garden", "Dehua Ceramics", 35,
+     [[("4IN", "4in"), ("6IN", "6in"), ("8IN", "8in")], [("WHT", "White"), ("TER", "Terracotta"), ("SAG", "Sage"), ("BLK", "Black")]]),
+    ("WL", "Leather Wallet Phone Case", 21.99, 0.24, "Phone accessories", "Shenzhen MobileGear", 18,
+     [[("IP16", "iPhone 16"), ("IP15", "iPhone 15"), ("IP14", "iPhone 14"), ("S24", "Galaxy S24"), ("PX8", "Pixel 8"), ("IP13", "iPhone 13")], [("BRN", "Brown"), ("BLK", "Black"), ("TAN", "Tan")]]),
+    ("PG", "Phone Grip and Stand", 7.99, 0.12, "Phone accessories", "Shenzhen MobileGear", 14,
+     [[("MRB", "Marble"), ("DSY", "Daisy"), ("BLK", "Black"), ("GLD", "Gold"), ("HOL", "Holographic"), ("SUN", "Sunset"), ("PAW", "Paw Print"), ("WAV", "Wave")]]),
+    ("PW", "Portable Power Bank", 29.99, 0.36, "Phone accessories", "Shenzhen MobileGear", 21,
+     [[("10K", "10000mAh"), ("20K", "20000mAh")], [("BLK", "Black"), ("WHT", "White"), ("BLU", "Blue")]]),
+    ("WBD", "Silicone Smart Watch Band", 11.99, 0.14, "Phone accessories", "Shenzhen MobileGear", 14,
+     [[("41", "38-41mm"), ("45", "42-45mm")], [("BLK", "Black"), ("WHT", "White"), ("NVY", "Navy"), ("PNK", "Pink"), ("OLV", "Olive"), ("RED", "Red"), ("LAV", "Lavender"), ("ORG", "Orange")]]),
+    ("MG", "Ceramic Coffee Mug 12oz", 14.99, 0.25, "Kitchen", "Dehua Ceramics", 30,
+     [[("SPK", "Speckled"), ("MBK", "Matte Black"), ("SGE", "Sage"), ("BLS", "Blush"), ("TER", "Terracotta"), ("CRM", "Cream"), ("NVY", "Navy"), ("MOS", "Moss"), ("SKY", "Sky Blue"), ("SND", "Sand")]]),
+    ("UT", "Silicone Kitchen Utensil Set", 25.99, 0.27, "Kitchen", "Yongkang HomeWare", 25,
+     [[("BLK", "Black"), ("GRY", "Grey"), ("SAG", "Sage"), ("KHK", "Khaki"), ("RED", "Red")]]),
+    ("FB", "Reusable Silicone Food Bags", 19.99, 0.22, "Kitchen", "Yongkang HomeWare", 21,
+     [[("4PK", "4 Pack"), ("8PK", "8 Pack"), ("12PK", "12 Pack")]]),
+    ("AF", "Air Fryer Paper Liners", 9.99, 0.15, "Kitchen", "Yongkang HomeWare", 18,
+     [[("6IN", "6.3in"), ("8IN", "7.9in"), ("9IN", "9in")], [("100", "100 Pack"), ("200", "200 Pack")]]),
+    ("BS", "Microfiber Bed Sheet Set", 29.99, 0.27, "Home", "Shaoxing Textiles", 28,
+     [[("TW", "Twin"), ("FL", "Full"), ("QN", "Queen"), ("KG", "King")], [("WHT", "White"), ("GRY", "Grey"), ("NVY", "Navy"), ("SGE", "Sage"), ("BLS", "Blush"), ("CHR", "Charcoal")]]),
+    ("SC", "Waterproof Shower Curtain", 19.99, 0.22, "Home", "Shaoxing Textiles", 25,
+     [[("BOT", "Botanical"), ("MRB", "Marble"), ("BOH", "Boho"), ("STR", "Stripe"), ("OCN", "Ocean"), ("GEO", "Geometric"), ("PLN", "Plain White"), ("CTY", "City")]]),
+    ("CK", "Minimalist Wall Clock", 24.99, 0.29, "Home", "Zhongshan Lighting", 25,
+     [[("10IN", "10in"), ("12IN", "12in")], [("BLK", "Black"), ("WOD", "Wood"), ("GLD", "Gold")]]),
+    ("BL", "Knit Throw Blanket", 34.99, 0.31, "Home", "Shaoxing Textiles", 28,
+     [[("50", "50x60in"), ("60", "60x80in")], [("CRM", "Cream"), ("GRY", "Grey"), ("SGE", "Sage"), ("MUS", "Mustard"), ("RST", "Rust"), ("NVY", "Navy")]]),
+    ("PF", "Picture Frame", 12.99, 0.2, "Home", "Ningbo Paper", 25,
+     [[("4X6", "4x6in"), ("5X7", "5x7in"), ("8X10", "8x10in"), ("11X14", "11x14in")], [("BLK", "Black"), ("WHT", "White"), ("OAK", "Oak")]]),
+    ("BTM", "Memory Foam Bath Mat", 17.99, 0.24, "Home", "Shaoxing Textiles", 25,
+     [[("GRY", "Grey"), ("WHT", "White"), ("NVY", "Navy"), ("SGE", "Sage"), ("BLS", "Blush"), ("CHR", "Charcoal")]]),
+    ("ST", "Fabric Storage Bin", 13.99, 0.21, "Home", "Shaoxing Textiles", 25,
+     [[("11", "11in Cube"), ("13", "13in Cube")], [("GRY", "Grey"), ("BEI", "Beige"), ("NVY", "Navy"), ("BLK", "Black"), ("SGE", "Sage"), ("WHT", "White")]]),
+    ("CW", "Feather Wand Cat Toy", 8.99, 0.13, "Pet supplies", "Hangzhou PetCare", 18,
+     [[("1PK", "Single"), ("3PK", "3 Pack"), ("5PK", "5 Pack")]]),
+    ("CHW", "Durable Dog Chew Toy", 12.99, 0.18, "Pet supplies", "Hangzhou PetCare", 21,
+     [[("S", "Small"), ("M", "Medium"), ("L", "Large")], [("BNE", "Bone"), ("RNG", "Ring"), ("STK", "Stick")]]),
+    ("GB", "Pet Grooming Brush", 14.99, 0.17, "Pet supplies", "Hangzhou PetCare", 18,
+     [[("SLK", "Slicker"), ("DSH", "Deshedding"), ("GLV", "Glove")]]),
+    ("AB", "Running Phone Armband", 13.99, 0.16, "Fitness", "Xiamen FitPro", 18,
+     [[("STD", "Standard"), ("XL", "XL")], [("BLK", "Black"), ("PNK", "Pink"), ("BLU", "Blue")]]),
+    ("FR", "High Density Foam Roller", 21.99, 0.26, "Fitness", "Xiamen FitPro", 25,
+     [[("12", "12in"), ("18", "18in"), ("24", "24in")], [("BLK", "Black"), ("BLU", "Blue")]]),
+    ("JO", "Travel Jewelry Organizer", 16.99, 0.2, "Beauty", "Guangzhou BeautyLab", 21,
+     [[("BLS", "Blush"), ("SGE", "Sage"), ("GRY", "Grey")]]),
+    ("SK", "Bamboo Crew Socks 6-Pack", 18.99, 0.23, "Clothing", "Zhuji Hosiery", 28,
+     [[("S", "Small"), ("M", "Medium"), ("L", "Large")], [("BLK", "Black"), ("WHT", "White"), ("MIX", "Mixed")]]),
+    ("BN", "Cable Knit Beanie", 14.99, 0.18, "Clothing", "Zhuji Hosiery", 25,
+     [[("BLK", "Black"), ("CRM", "Cream"), ("GRY", "Grey"), ("RST", "Rust"), ("OLV", "Olive"), ("NVY", "Navy"), ("PNK", "Pink"), ("MUS", "Mustard")]]),
+    ("ER", "Gold Hoop Earrings Set", 15.99, 0.15, "Beauty", "Guangzhou BeautyLab", 18,
+     [[("3PR", "3 Pairs"), ("5PR", "5 Pairs"), ("HUG", "Huggies"), ("CHN", "Chunky"), ("TWS", "Twisted"), ("PRL", "Pearl"), ("MIX", "Mixed"), ("MIN", "Mini")]]),
+    ("SG", "Polarized Sunglasses", 19.99, 0.16, "Clothing", "Xiamen Optical", 25,
+     [[("AVI", "Aviator"), ("RND", "Round"), ("SQR", "Square"), ("CAT", "Cat Eye")], [("BLK", "Black"), ("TRT", "Tortoise"), ("GLD", "Gold")]]),
+    ("CO", "Car Seat Back Organizer", 18.99, 0.24, "Car", "Ningbo AutoParts", 25,
+     [[("BLK", "Black"), ("GRY", "Grey"), ("BEI", "Beige")]]),
+    ("TG", "Digital Tire Pressure Gauge", 12.99, 0.2, "Car", "Ningbo AutoParts", 21,
+     [[("STD", "Standard"), ("LED", "With Light")]]),
+]
+
+_SIZE_WORD = re.compile(r"\d|^(XS|S|M|L|XL|Small|Medium|Large|Tall|Extra Large|Half Sheet|Quarter Sheet|Round 9in|Standard|Queen|King|Twin|Full|Single)$")
+
+_PATTERNS = ["steady"] * 50 + ["rising"] * 10 + ["declining"] * 12 + ["seasonal"] * 8 + ["intermittent"] * 14 + ["new"] * 4 + ["viral"] * 2
+
+
+def _big_store_products() -> tuple[SampleProduct, ...]:
+    rng = random.Random("urban-nest")
+    items = []
+    for code, base, price, cost_share, category, supplier, lead, axes in _FAMILIES:
+        combos: list[list[tuple[str, str]]] = [[]]
+        for axis in axes:
+            combos = [c + [v] for c in combos for v in axis]
+        for combo in combos:
+            sku = "-".join([code] + [v[0] for v in combo])
+            name = f"{base} – {', '.join(v[1] for v in combo)}"
+            # Bigger sizes or packs cost a little more (not colours or models); prices end in .99.
+            step = axes[0].index(combo[0]) if _SIZE_WORD.search(axes[0][0][1]) else 0
+            p = round(price * (1 + 0.07 * step)) - 0.01 if step else price
+            items.append((sku, name, p, cost_share, category, supplier, lead))
+    rng.shuffle(items)
+    out = []
+    for rank, (sku, name, price, cost_share, category, supplier, lead) in enumerate(items, start=1):
+        # A few best sellers and a long tail (a Zipf-like curve), with some noise.
+        weekly = round(26 * rank ** -0.85 * rng.uniform(0.7, 1.3), 2)
+        pattern = rng.choice(_PATTERNS)
+        if rng.random() < 0.04:
+            pattern, weekly = "steady", 0.0  # listed but not selling: dead stock
+        weeks_of_stock = rng.choice([0, 1, 2, 3, 4, 6, 8, 10, 12, 16, 20])
+        stock = int(round(max(weekly, 0.4) * weeks_of_stock + rng.randint(0, 6)))
+        growth = {"rising": 0.03, "declining": -0.03, "viral": 0.05}.get(pattern, 0.0)
+        cost = round(price * cost_share * rng.uniform(0.9, 1.1), 2)
+        item_id = str(296_000_000_000 + rank * 7_919)
+        out.append(SampleProduct(sku, name, price, cost, weekly, growth, pattern, stock, lead, item_id, category, supplier))
+    return tuple(out)
+
+
+STORES["bigstore"] = SampleStore(
+    "bigstore", "ebay", "Big eBay store (550 products)", "Urban Nest Home & Tech (sample)", "home, kitchen, phone accessories and pet supplies",
+    "urban-nest-ebay-orders-sample.csv", _big_store_products(),
+)
 
 
 def _poisson(rng: random.Random, lam: float) -> int:
@@ -231,7 +409,8 @@ def ebay_orders(store: SampleStore, sales: list[SimSale]) -> str:
             "Springfield", "United States", s.product.item_id, s.product.name, s.product.sku, str(s.qty),
             f"${s.price:.2f}", "$0.00", f"${s.price * s.qty:.2f}", s.when.strftime("%b-%d-%y"), s.when.strftime("%b-%d-%y"),
         ])
-    rows += [[], [f"{len(rows) - 2} record(s) downloaded"], ["Seller ID : retroloot_sample"]]
+    seller = store.store_name.split(" (")[0].lower().replace(" & ", "_").replace(" ", "")
+    rows += [[], [f"{len(rows) - 2} record(s) downloaded"], [f"Seller ID : {seller}_sample"]]
     return _csv(rows)
 
 
@@ -352,7 +531,7 @@ def build(key: str, now: datetime | None = None) -> tuple[str, bytes]:
         return "shopify-products-sample.csv", shopify_products(STORES["shopify"]).encode()
     store = STORES[key]
     sales = simulate(store, now=now)
-    if key == "ebay":
+    if key in ("ebay", "bigstore"):
         return store.filename, ebay_orders(store, sales).encode()
     if key == "amazon":
         return store.filename, amazon_orders(store, sales).encode()
@@ -385,8 +564,8 @@ def supplier_for(key: str, i: int) -> str:
 def stock_csv(key: str) -> tuple[str, bytes]:
     """A simple stock list for any sample store (sellers can also type stock in the app)."""
     store = STORES[key]
-    rows = [["SKU", "Product", "Stock", "Cost", "Price", "Supplier", "Supplier days"]]
+    rows = [["SKU", "Product", "Category", "Stock", "Cost", "Price", "Supplier", "Supplier days"]]
     for i, p in enumerate(store.products):
         sku = p.sku or ("EBAY-" + p.item_id if store.platform == "ebay" and p.item_id else "")
-        rows.append([sku, p.name, str(p.stock), f"{p.cost:.2f}", f"{p.price:.2f}", supplier_for(key, i), str(p.lead_days)])
+        rows.append([sku, p.name, p.category, str(p.stock), f"{p.cost:.2f}", f"{p.price:.2f}", p.supplier or supplier_for(key, i), str(p.lead_days)])
     return f"{key}-stock-sample.csv", _csv(rows).encode()

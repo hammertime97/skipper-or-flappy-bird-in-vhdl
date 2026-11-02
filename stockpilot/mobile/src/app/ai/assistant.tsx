@@ -18,7 +18,7 @@ export default function Assistant() {
   // The seller's own numbers, so most questions are answered instantly on the phone.
   const store = useApi(async (): Promise<StoreData> => {
     const [fc, dash, ins, products] = await Promise.all([api.forecasts(), api.dashboard(), api.insights(), api.products()]);
-    return { fc, dash, ins, products, cur: user?.currency ?? 'USD' };
+    return { fc, dash, ins, products, cur: user?.currency ?? 'USD', pro: user?.billing.plan === 'pro' };
   });
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [text, setText] = useState('');

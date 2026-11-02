@@ -380,11 +380,21 @@
   /** sheets: [{a, x}] already extracted. Mirrors services_import.confirm_job. */
   function applyImport(store, sheets) {
     const created = [], updated = new Set();
+    // Look products up by SKU, then by name, through indexes (same rule as findProduct, but fast for big stores).
+    const bySku = new Map(), byName = new Map();
+    const remember = (p) => {
+      const k = p.sku.toUpperCase(), n = norm(p.name);
+      if (!bySku.has(k)) bySku.set(k, p);
+      if (n && !byName.has(n)) byName.set(n, p);
+    };
+    store.products.forEach(remember);
+    const find = (key, name) => bySku.get(String(key).toUpperCase()) || (name ? byName.get(norm(name)) : undefined);
+    const add = (fields) => { const p = addProduct(store, fields); remember(p); return p; };
     let added = 0, dupes = 0, cancelled = 0, units = 0;
     for (const { a, x } of sheets.filter((s) => s.a.kind === 'stock')) {
       for (const rec of x.stock) {
-        let p = findProduct(store, rec.key, rec.name);
-        if (!p) { p = addProduct(store, { sku: rec.sku || rec.key, name: rec.name, stock_qty: rec.stock || 0, stock_known: rec.stock !== null, source: a.platform }); created.push(p); }
+        let p = find(rec.key, rec.name);
+        if (!p) { p = add({ sku: rec.sku || rec.key, name: rec.name, stock_qty: rec.stock || 0, stock_known: rec.stock !== null, source: a.platform }); created.push(p); }
         else updated.add(p.id);
         if (rec.stock !== null) { p.stock_qty = rec.stock; p.stock_known = true; }
         if (rec.price !== null) p.sell_price = rec.price;
@@ -402,9 +412,9 @@
       const median = (arr) => { const s = [...arr].sort((p, q) => p - q), n = s.length; return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2; };
       for (const o of x.orders) {
         if (store.keys.has(o.import_key)) { dupes++; continue; }
-        let p = findProduct(store, o.key, o.name);
+        let p = find(o.key, o.name);
         if (!p) {
-          p = addProduct(store, { sku: o.sku || o.key, name: o.name || o.key, sell_price: prices[o.key] ? Math.round(median(prices[o.key]) * 100) / 100 : 0, stock_known: false, source: a.platform });
+          p = add({ sku: o.sku || o.key, name: o.name || o.key, sell_price: prices[o.key] ? Math.round(median(prices[o.key]) * 100) / 100 : 0, stock_known: false, source: a.platform });
           created.push(p);
         } else if (p.sell_price === 0 && prices[o.key]) p.sell_price = Math.round(median(prices[o.key]) * 100) / 100;
         store.sales.push({ pid: p.id, qty: o.quantity, price: o.unit_price !== null ? o.unit_price : p.sell_price, when: o.when, channel: o.channel, order: o.order_ref });
@@ -713,24 +723,48 @@
     return [...products].sort((a, b) => (rev[b.id] || 0) * b.sell_price - (rev[a.id] || 0) * a.sell_price);
   }
 
-  function productForecast(store, p, now, horizon = 4) {
-    const pts = store.sales.filter((s) => s.pid === p.id).map((s) => [s.when, s.qty]);
-    const history = weeklyBuckets(pts, now, 104);
-    const fc = forecastWeekly(uncensor(history, p.stock_qty, p.stock_known), horizon);
+  /** Sales points [time, qty] per product id, built in one pass over the sales. */
+  function salesByProduct(store) {
+    const m = new Map();
+    for (const s of store.sales) {
+      let a = m.get(s.pid);
+      if (!a) m.set(s.pid, (a = []));
+      a.push([s.when, s.qty]);
+    }
+    return m;
+  }
+
+  // A forecast depends only on the weekly history and the horizon, so it can be reused (cache: a Map)
+  // until that product's sales change. Big stores on a phone need this.
+  function cachedForecast(y, horizon, cache) {
+    if (!cache) return forecastWeekly(y, horizon);
+    const key = horizon + ':' + y.join(',');
+    let fc = cache.get(key);
+    if (!fc) { fc = forecastWeekly(y, horizon); cache.set(key, fc); }
+    return fc;
+  }
+
+  /** histEnd: where the weekly buckets end (defaults to now; the app uses the end of today so forecasts stay cached all day). */
+  function productForecast(store, p, now, horizon = 4, cache = null, pts = null, histEnd = now) {
+    pts = pts || store.sales.filter((s) => s.pid === p.id).map((s) => [s.when, s.qty]);
+    const history = weeklyBuckets(pts, histEnd, 104);
+    const fc = cachedForecast(uncensor(history, p.stock_qty, p.stock_known), horizon, cache);
     return { history, fc, plan: planStock(fc, p.stock_qty, p.incoming_qty, p.lead_time_days, now, 2, p.fulfilment, p.stock_known) };
   }
 
-  function forecasts(store, now, maxProducts = null, horizon = 4) {
-    const products = activeProducts(store), st = productStats(store, products, now);
+  function forecasts(store, now, maxProducts = null, horizon = 4, cache = null, histEnd = now) {
+    const products = activeProducts(store), st = productStats(store, products, now), bySale = salesByProduct(store);
     const revenue = Object.values(st).reduce((x, s) => x + s.revenue_30d, 0), fee = Object.values(st).reduce((x, s) => x + s.fees_30d, 0);
     const feeRate = revenue ? fee / revenue : 0;
     const ranked = rank(store, products, now), unlocked = new Set((maxProducts === null ? ranked : ranked.slice(0, maxProducts)).map((p) => p.id));
     const items = [], histTotal = new Array(104).fill(0), units = new Array(horizon).fill(0), rev = new Array(horizon).fill(0), prof = new Array(horizon).fill(0);
     let now$ = 0, soon$ = 0;
     for (const p of ranked) {
-      const { history, fc, plan } = productForecast(store, p, now, horizon);
+      const history = weeklyBuckets(bySale.get(p.id) || [], histEnd, 104);
       history.forEach((v, i) => { histTotal[i] += v * p.sell_price; });
-      if (!unlocked.has(p.id)) { items.push({ product: p, locked: true }); continue; }
+      if (!unlocked.has(p.id)) { items.push({ product: p, locked: true }); continue; } // locked: no forecast needed
+      const fc = cachedForecast(uncensor(history, p.stock_qty, p.stock_known), horizon, cache);
+      const plan = planStock(fc, p.stock_qty, p.incoming_qty, p.lead_time_days, now, 2, p.fulfilment, p.stock_known);
       const feeUnit = st[p.id].fee_per_unit ?? p.sell_price * feeRate, unitProfit = p.sell_price - p.cost_price - feeUnit;
       for (let k = 0; k < horizon; k++) { units[k] += fc.weeks[k]; rev[k] += fc.weeks[k] * p.sell_price; prof[k] += fc.weeks[k] * unitProfit; }
       if (plan.status === 'out_of_stock' || plan.status === 'reorder_now') now$ += plan.reorder_qty * p.cost_price;
@@ -738,7 +772,7 @@
       items.push({ product: p, stats: st[p.id], locked: false, forecast: fc, stock_plan: plan, next_week_revenue: fc.next_week * p.sell_price, next_week_profit: fc.next_week * unitProfit });
     }
     const first = histTotal.findIndex((v) => v > 0), storeHist = first < 0 ? [] : histTotal.slice(first);
-    const sfc = storeHist.length ? forecastWeekly(storeHist, horizon) : null;
+    const sfc = storeHist.length ? cachedForecast(storeHist, horizon, cache) : null;
     const rankS = { out_of_stock: 0, reorder_now: 1, low: 2, stock_unknown: 3, dead_stock: 4, overstock: 5, healthy: 6, no_demand: 7 };
     items.sort((a, b) => (a.locked - b.locked) || ((rankS[a.stock_plan?.status] ?? 9) - (rankS[b.stock_plan?.status] ?? 9)) || ((b.next_week_revenue || 0) - (a.next_week_revenue || 0)));
     return {
@@ -864,5 +898,5 @@
     return { price_for_30pct_margin: priceForMargin(cost, shipping, feePct, feeFixed, ad, 0.3), fees: r2(fee), profit_before_ads: r2(before), profit: r2(profit), margin_pct: price ? Math.round((profit / price) * 1000) / 10 : 0, max_ad_cost_per_sale: r2(Math.max(0, before)), break_even_roas: before > 0 ? r2(price / before) : null };
   }
 
-  root.Engine = { ImportProblem, readTables, analyse, extract, summary, describe, missingFor, requiredRoles, parseDate, parseNumber, newStore, applyImport, addProduct, findProduct, weeklyBuckets, forecastWeekly, planStock, upcomingEvents, feeTable, channelKey, productStats, activeProducts, dashboard, forecasts, productForecast, focusList, bundles, smartPlan, profitCalc, money, fmtDate, DAY };
+  root.Engine = { ImportProblem, readTables, analyse, extract, summary, describe, missingFor, requiredRoles, parseDate, parseNumber, newStore, applyImport, addProduct, findProduct, weeklyBuckets, forecastWeekly, planStock, upcomingEvents, feeTable, channelKey, productStats, activeProducts, dashboard, forecasts, productForecast, salesByProduct, rank, focusList, bundles, smartPlan, profitCalc, money, fmtDate, DAY };
 })(typeof window !== 'undefined' ? window : globalThis);

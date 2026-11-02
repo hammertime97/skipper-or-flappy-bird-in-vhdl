@@ -56,7 +56,7 @@ def test_revenuecat_webhook_upgrades_and_expires(client, auth):
     assert r.status_code == 200 and "pro" in r.json()["result"]
     assert client.get("/billing/status", headers=h).json()["plan"] == "pro"
     client.post("/demo/seed", headers=h)
-    assert client.get("/forecasts", headers=h).json()["locked_count"] == 0
+    assert client.get("/forecasts", headers=h).json()["locked_count"] == 2  # Pro: top 12 (test limit), 14 products
     event["event"]["type"] = "EXPIRATION"
     client.post("/billing/revenuecat-webhook", json=event, headers={"Authorization": "Bearer rc-secret"})
     assert client.get("/billing/status", headers=h).json()["plan"] == "free"

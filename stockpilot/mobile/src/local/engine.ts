@@ -70,8 +70,12 @@ export const Engine = (globalThis as any).Engine as {
   productStats: (store: LocalStore, products: LocalProduct[], now: number) => Record<number, any>;
   activeProducts: (store: LocalStore) => LocalProduct[];
   dashboard: (store: LocalStore, now: number) => any;
-  forecasts: (store: LocalStore, now: number, maxProducts: number | null, horizon?: number) => any;
-  productForecast: (store: LocalStore, p: LocalProduct, now: number) => { history: number[]; fc: any; plan: any };
+  forecasts: (store: LocalStore, now: number, maxProducts: number | null, horizon?: number, cache?: Map<string, unknown> | null, histEnd?: number) => any;
+  productForecast: (
+    store: LocalStore, p: LocalProduct, now: number, horizon?: number, cache?: Map<string, unknown> | null, pts?: [number, number][] | null, histEnd?: number,
+  ) => { history: number[]; fc: any; plan: any };
+  salesByProduct: (store: LocalStore) => Map<number, [number, number][]>;
+  rank: (store: LocalStore, products: LocalProduct[], now: number) => LocalProduct[];
   upcomingEvents: (now: number, weeks?: number) => any[];
   focusList: (store: LocalStore, products: LocalProduct[], now: number) => any;
   bundles: (store: LocalStore, products: LocalProduct[], now: number) => any;

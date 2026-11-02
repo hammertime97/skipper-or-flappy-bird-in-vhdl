@@ -9,6 +9,8 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { money } from '@/lib/format';
 
+const PAGE = 40; // big stores: show products a page at a time
+
 /** Type stock (or cost per item) for many products at once, e.g. right after importing a sales file. */
 export default function StockCounts() {
   const params = useLocalSearchParams<{ tab?: string }>();
@@ -20,9 +22,14 @@ export default function StockCounts() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<Error | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [q, setQ] = useState('');
+  const [shown, setShown] = useState(PAGE);
 
-  const rows = (data ?? []).filter((p) =>
-    showAll ? true : tab === 'stock' ? !p.stock_known : p.cost_price <= 0,
+  const ql = q.trim().toLowerCase();
+  const rows = (data ?? []).filter(
+    (p) =>
+      (showAll ? true : tab === 'stock' ? !p.stock_known : p.cost_price <= 0) &&
+      (!ql || `${p.name} ${p.sku} ${p.category}`.toLowerCase().includes(ql)),
   );
 
   const save = async () => {
@@ -65,14 +72,19 @@ export default function StockCounts() {
       </T>
       {loading ? <Loading /> : null}
       {error ? <ErrorBox error={error} onRetry={refresh} /> : null}
-      {data && rows.length === 0 ? (
+      {data && (data.length > PAGE || q) ? (
+        <Input value={q} onChangeText={(v) => { setQ(v); setShown(PAGE); }} placeholder="Search name, SKU or category" autoCorrect={false} />
+      ) : null}
+      {filled ? <Button title={`Save ${filled}`} onPress={save} loading={saving} /> : null}
+      {data && rows.length === 0 && q ? <T kind="secondary">No product matches “{q}”.</T> : null}
+      {data && rows.length === 0 && !q ? (
         <Card style={{ gap: Spacing.sm }}>
           <T style={{ fontWeight: '700' }}>All done here ✓</T>
           <Button title="Show all products" kind="secondary" onPress={() => setShowAll(true)} />
           <Button title="Back to dashboard" onPress={() => router.navigate('/')} />
         </Card>
       ) : null}
-      {rows.map((p) => (
+      {rows.slice(0, shown).map((p) => (
         <Card key={p.id} style={{ paddingVertical: Spacing.md }}>
           <Row>
             <View style={{ flex: 1 }}>
@@ -97,6 +109,9 @@ export default function StockCounts() {
           </Row>
         </Card>
       ))}
+      {rows.length > shown ? (
+        <Button title={`Show ${Math.min(PAGE, rows.length - shown)} more (${rows.length - shown} left)`} kind="secondary" onPress={() => setShown(shown + PAGE)} />
+      ) : null}
       {saveError ? <ErrorBox error={saveError} /> : null}
       {rows.length ? <Button title={filled ? `Save ${filled}` : 'Save'} onPress={save} loading={saving} disabled={!filled} /> : null}
     </Screen>

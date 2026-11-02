@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 
+import { ExportButton } from '@/components/export-button';
 import { Button, Chips, Empty, ErrorBox, Input, Loading, Row, Screen, T } from '@/components/ui';
 import { Radius, Spacing } from '@/constants/theme';
 import { useApi } from '@/hooks/use-api';
@@ -62,6 +63,20 @@ export default function InventoryScreen() {
             { value: 'dropship', label: 'Dropship' },
           ]}
         />
+        {data && data.length ? (
+          <ExportButton
+            what="stock"
+            title="Export stock list to spreadsheet"
+            rows={() => [
+              ['SKU', 'Product', 'Category', 'Supplier', 'In stock', 'Unit cost', 'Price', 'Margin %', 'Sold (7 days)', 'Sold (30 days)', 'Revenue (30 days)', 'Profit after fees (30 days)', 'Days of stock left'],
+              ...rows.map((p) => [
+                p.sku, p.name, p.category, p.supplier, p.stock_known ? p.stock_qty : '', p.cost_price || '', p.sell_price,
+                p.margin_pct == null ? '' : Math.round(p.margin_pct * 100), p.units_7d ?? 0, p.units_30d ?? 0, p.revenue_30d ?? 0,
+                p.profit_30d ?? 0, p.days_of_stock ?? '',
+              ]),
+            ]}
+          />
+        ) : null}
       </View>
       {loading ? <Loading /> : null}
       {error ? (

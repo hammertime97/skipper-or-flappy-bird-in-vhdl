@@ -3,11 +3,13 @@ import { useEffect, useState } from 'react';
 import { Linking, View } from 'react-native';
 import type { PurchasesPackage } from 'react-native-purchases';
 
-import { Bullets, Button, Card, ErrorBox, Loading, Screen, T } from '@/components/ui';
+import { Bullets, Button, Card, ErrorBox, Loading, Row, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { api, SERVER_ENABLED } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { buy, getPackages, purchasesAvailable, restore } from '@/lib/purchases';
+import { FREE_PRODUCTS, PRO_PRODUCTS } from '@/local/api';
 
 const PERIOD: Record<string, string> = { P1W: 'week', P1M: 'month', P3M: '3 months', P6M: '6 months', P1Y: 'year' };
 
@@ -88,17 +90,19 @@ export default function Paywall() {
         <T kind="secondary">
           {SERVER_ENABLED
             ? 'Forecast every product, get your AI plan every week, and spot trends before your competitors.'
-            : 'Forecasts, reorder dates and supplier orders for every product you sell, not just your top 10.'}
+            : 'Track 3 times as many products, see which ones make your money, find bundles, and export to spreadsheets.'}
         </T>
       </View>
 
-      {plans ? (
+      {SERVER_ENABLED && !local && plans ? (
         <Card style={{ gap: Spacing.sm }}>
           <T kind="heading">{plans.pro.name}</T>
           <Bullets items={plans.pro.features} />
           <T kind="muted">Free plan: {plans.free.features.join(' · ')}</T>
         </Card>
-      ) : null}
+      ) : (
+        <Compare free={FREE_PRODUCTS} pro={PRO_PRODUCTS} />
+      )}
 
       {local && !purchasesAvailable() ? (
         <Card style={{ gap: Spacing.sm }}>
@@ -145,5 +149,40 @@ export default function Paywall() {
       {waiting ? <T kind="secondary">Activating Pro…</T> : null}
       {error ? <ErrorBox error={error} /> : null}
     </Screen>
+  );
+}
+
+/** Free vs Pro, side by side. */
+function Compare({ free, pro }: { free: number; pro: number }) {
+  const c = useTheme();
+  const rows: [string, string, string][] = [
+    ['Products tracked: forecasts, reorder dates, weekly plan, supplier orders', `${free}`, `${pro}`],
+    ['Your money makers (profit and losing products)', '–', '✓'],
+    ['Bought together (bundle ideas)', '–', '✓'],
+    ['Export orders, forecasts and stock to a spreadsheet', '–', '✓'],
+    ['Imports from eBay, Amazon, Shopify, Etsy, TikTok Shop and Excel', '✓', '✓'],
+    ['Dashboard, trends, calculator, product check, answers, listing drafts', '✓', '✓'],
+  ];
+  return (
+    <Card style={{ gap: Spacing.sm }}>
+      <Row>
+        <T kind="label" style={{ flex: 1 }}>
+          {' '}
+        </T>
+        <T kind="label" style={{ width: 52, textAlign: 'center' }}>
+          Free
+        </T>
+        <T kind="label" style={{ width: 52, textAlign: 'center', color: c.tint }}>
+          Pro
+        </T>
+      </Row>
+      {rows.map(([what, f, p]) => (
+        <Row key={what} style={{ borderTopWidth: 1, borderTopColor: c.border, paddingTop: Spacing.sm }}>
+          <T style={{ flex: 1 }}>{what}</T>
+          <T style={{ width: 52, textAlign: 'center' }}>{f}</T>
+          <T style={{ width: 52, textAlign: 'center', fontWeight: '700', color: c.tint }}>{p}</T>
+        </Row>
+      ))}
+    </Card>
   );
 }

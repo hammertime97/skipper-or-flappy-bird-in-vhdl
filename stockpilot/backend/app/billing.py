@@ -24,15 +24,17 @@ PLANS = {
     "free": {
         "name": "Free",
         "features": [
-            "Inventory & sales dashboard",
-            f"Weekly forecasts for your top {settings.free_forecast_products} products",
+            "Dashboard, stock, imports, trends, calculator, product check, instant answers and listing drafts",
+            f"Forecasts, reorder dates and supplier orders for up to {settings.free_forecast_products} products",
             f"{settings.free_ai_calls_per_month} AI requests per month",
         ],
     },
     "pro": {
         "name": "Pro",
         "features": [
-            "Weekly forecasts for every product",
+            f"Forecasts, reorder dates and supplier orders for up to {settings.pro_forecast_products} products",
+            "Your money makers and products bought together",
+            "Export orders, forecasts and stock to a spreadsheet",
             "AI Weekly Plan every week",
             "Trend Scout: what's booming in your niche",
             "Product Check: should I sell this?",
@@ -62,6 +64,11 @@ def ai_calls_this_month(session: Session, user_id: int, now: datetime | None = N
     ).one()
 
 
+def product_limit(user: User) -> int:
+    """How many products get forecasts and reorder plans (the best sellers first)."""
+    return settings.pro_forecast_products if is_pro(user) else settings.free_forecast_products
+
+
 def status_for(session: Session, user: User) -> dict:
     pro = is_pro(user)
     limit = PRO_AI_CALLS_PER_MONTH if pro else settings.free_ai_calls_per_month
@@ -71,6 +78,7 @@ def status_for(session: Session, user: User) -> dict:
         "plan_expires_at": user.plan_expires_at.isoformat() if pro and user.plan_expires_at else None,
         "ai_calls_used": used,
         "ai_calls_limit": limit,
+        "product_limit": product_limit(user),
         "plans": PLANS,
     }
 

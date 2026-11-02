@@ -111,15 +111,56 @@ export async function saveTrends(value: { fetchedAt: number; lib: unknown }) {
   }
 }
 
+// Forecasts worked out today, so screens open instantly next time (see forecastsRaw in api.ts).
+const MEMO_FILE = 'stockpilot-forecasts.json';
+const MEMO_KEY = 'stockpilot.forecasts';
+type Memo = { day: number; entries: [string, unknown][] };
+
+export async function loadForecastMemo(): Promise<Memo | null> {
+  try {
+    if (Platform.OS === 'web') {
+      const raw = globalThis.localStorage?.getItem(MEMO_KEY);
+      return raw ? JSON.parse(raw) : null;
+    }
+    const f = new File(Paths.document, MEMO_FILE);
+    return f.exists ? JSON.parse(await f.text()) : null;
+  } catch {
+    return null;
+  }
+}
+
+let memoPending: ReturnType<typeof setTimeout> | null = null;
+export function saveForecastMemo(memo: Memo) {
+  if (memoPending) clearTimeout(memoPending);
+  memoPending = setTimeout(async () => {
+    memoPending = null;
+    try {
+      const raw = JSON.stringify(memo);
+      if (Platform.OS === 'web') {
+        globalThis.localStorage?.setItem(MEMO_KEY, raw);
+        return;
+      }
+      const f = new File(Paths.document, MEMO_FILE);
+      if (!f.exists) f.create();
+      await f.write(raw);
+    } catch {
+      // Only a speed-up: forecasts are worked out again next time.
+    }
+  }, 1000);
+}
+
 export async function wipe() {
   if (pending) clearTimeout(pending);
   pending = null;
   if (Platform.OS === 'web') {
     globalThis.localStorage?.removeItem(WEB_KEY);
+    globalThis.localStorage?.removeItem(MEMO_KEY);
     return;
   }
-  const f = new File(Paths.document, FILE_NAME);
-  if (f.exists) f.delete();
+  for (const name of [FILE_NAME, MEMO_FILE]) {
+    const f = new File(Paths.document, name);
+    if (f.exists) f.delete();
+  }
 }
 
 /** Bytes of a file the seller picked: a File object on web, a file:// or content:// URI on the phone. */

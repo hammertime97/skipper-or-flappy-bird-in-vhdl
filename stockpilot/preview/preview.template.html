@@ -233,11 +233,11 @@ function wireCharts() {
 const products = () => E.activeProducts(S.store);
 const ideas = () => S.store.products.filter((p) => p.stage === 'idea');
 const byId = (id) => S.store.products.find((p) => p.id === +id);
-const FREE_LIMIT = 10;
+const FREE_LIMIT = 200, PRO_LIMIT = 600; // products tracked: best sellers first (Pro: 3× Free)
 let fcCache = null;
 function forecastsData() {
   const key = S.plan + ':' + S.store.sales.length + ':' + S.store.products.map((p) => [p.stock_qty, p.stock_known, p.cost_price, p.stage].join()).join('|');
-  if (!fcCache || fcCache.key !== key) fcCache = { key, data: E.forecasts(S.store, NOW(), S.plan === 'pro' ? null : FREE_LIMIT) };
+  if (!fcCache || fcCache.key !== key) fcCache = { key, data: E.forecasts(S.store, NOW(), S.plan === 'pro' ? PRO_LIMIT : FREE_LIMIT) };
   return fcCache.data;
 }
 const lockedIds = () => new Set(forecastsData().items.filter((i) => i.locked).map((i) => i.product.id));
@@ -275,6 +275,7 @@ function planCard() {
   return `<a class="card tap" href="#weekly-plan" style="gap:4px"><span class="label">This week's plan</span><b>${esc(plan.headline)}</b><span class="sub">${plan.actions.length ? `${plan.actions.length} thing${plan.actions.length > 1 ? 's' : ''} on your list${high ? ` · ${high} urgent` : ''}` : 'Nothing to do right now'} →</span></a>`;
 }
 function insightCards() {
+  if (S.plan !== 'pro') return `<a class="card tap" href="#pro"><div class="row between wrap-row"><h2>Your money makers & bought together</h2><span class="pill" style="border-color:var(--tint)">Pro</span></div><span class="sub">See which few products earn most of your profit, which ones lose money, and which products customers buy together, so you can bundle them.</span><b>See Pro →</b></a>`;
   const { focus, bundles } = insightsData(), A = focus.items.filter((r) => r.group === 'A'), losing = focus.items.filter((r) => r.group === 'losing');
   const money_ = `<h2>Your money makers (90 days)</h2><div class="card" style="gap:10px"><span>${esc(focus.summary)}</span>
     ${A.slice(0, 6).map((r) => `<a href="#product-${r.id}" style="display:grid;gap:3px;text-decoration:none;color:inherit"><div class="row between"><span class="trunc grow">${esc(r.name)}</span><span class="label num">${money(r.profit, 0)} · ${Math.round(r.share * 100)}%</span></div><div class="meter"><i style="width:${Math.max(2, Math.round(r.share * 100))}%"></i></div></a>`).join('')}
@@ -325,7 +326,7 @@ function forecast() {
   ${b.now > 0 || b.next_two_weeks > 0 ? `<div class="card" style="gap:4px"><span class="label">Restock budget</span><span class="hero">${money(b.now, 0)}</span><span class="sub">Cash needed at cost price for the orders to place now${b.next_two_weeks > 0 ? `, plus about ${money(b.next_two_weeks, 0)} in the next two weeks` : ''}.</span></div>` : ''}
   ${F.events.length ? `<div class="card" style="gap:4px"><span class="label">Coming up</span>${F.events.map((e) => `<span>${esc(e.name)} · ${e.in_days === 0 ? 'today' : `in ${e.in_days} days`}${e.markets !== 'all' ? ` (${esc(e.markets)})` : ''}</span>`).join('')}<span class="muted">Your Weekly Plan checks how these could change your sales.</span></div>` : ''}
   ${hist.length > 1 ? `<div class="card"><h2>Weekly revenue</h2>${lineChart(hist, st.next_weeks_revenue, st.revenue_band?.lower, st.revenue_band?.upper, { readout: (i, v, fc) => `${fc ? `Forecast, week +${i - hist.length + 1}` : i === hist.length - 1 ? 'Last 7 days' : `${hist.length - 1 - i} wks ago`}: ${money(v, 0)}` })}</div>` : ''}
-  ${F.locked_count ? `<div class="card"><b>${F.locked_count} more products have forecasts waiting</b><span class="sub">Free shows your top ${FREE_LIMIT} sellers. Pro forecasts every product, every week.</span><a class="btn" href="#pro">Unlock with Pro</a></div>` : ''}
+  ${F.locked_count ? `<div class="card"><b>${F.locked_count} more products aren't tracked yet</b><span class="sub">${S.plan === 'pro' ? `Pro covers your ${PRO_LIMIT} best-selling products.` : `Free covers your ${FREE_LIMIT} best-selling products. Pro covers up to ${PRO_LIMIT}, with forecasts and reorder dates for each.`}</span>${S.plan === 'pro' ? '' : '<a class="btn" href="#pro">Unlock with Pro</a>'}</div>` : ''}
   <div class="chips">${[['action', 'Needs action'], ['rising', 'Rising'], ['declining', 'Declining'], ['all', 'All']].map(([v, l]) => `<button class="chip" data-fc="${v}" aria-pressed="${S.fcFilter === v}">${l}</button>`).join('')}</div>
   ${items.length ? items.map(fcRow).join('') : '<div class="card" style="align-items:center"><h2>All clear</h2><span class="sub">Nothing in this list right now.</span></div>'}`;
 }
@@ -347,7 +348,7 @@ function product(id) {
   const actions = `<div class="card" style="gap:12px"><h2>Quick actions</h2><div class="row" style="align-items:flex-end"><div class="field grow"><label class="label" for="sale-qty">Units sold</label><input class="input" id="sale-qty" inputmode="numeric" value="1"></div><button class="btn" data-sale="${p.id}">Record sale</button></div><div class="row" style="align-items:flex-end"><div class="field grow"><label class="label" for="stock-set">Stock you have now</label><input class="input" id="stock-set" inputmode="numeric" placeholder="${p.stock_known ? p.stock_qty : 'e.g. 40'}"></div><button class="btn" data-setstock="${p.id}">Save</button></div><div class="row" style="align-items:flex-end"><div class="field grow"><label class="label" for="cost-set">What you pay per item</label><input class="input" id="cost-set" inputmode="decimal" placeholder="${p.cost_price || 'e.g. 4.50'}"></div><button class="btn" data-setcost="${p.id}">Save</button></div><a class="btn secondary" href="#listing" data-listing="${p.id}">Write listing with AI</a></div>`;
   const recent = S.store.sales.filter((s) => s.pid === p.id && s.when < now).sort((a, b) => b.when - a.when).slice(0, 8);
   const recentCard = recent.length ? `<div class="card"><h2>Recent sales</h2>${recent.map((s) => `<div class="row between"><span class="sub">${shortDate(s.when)} · ${esc(s.channel || 'direct')}</span><span class="num">${s.qty} × ${money(s.price, 2)}</span></div>`).join('')}</div>` : '';
-  if (locked) return head + `<div class="card"><b>🔒 Forecast and stock plan are part of Pro</b><span class="sub">On the Free plan, forecasts cover your top ${FREE_LIMIT} sellers. This product is outside them.</span><a class="btn" href="#pro">See Pro</a></div>` + numbers + actions + recentCard;
+  if (locked) return head + `<div class="card"><b>🔒 Not tracked on your plan yet</b><span class="sub">Forecasts and reorder dates cover your best-selling products, up to ${S.plan === 'pro' ? PRO_LIMIT : FREE_LIMIT}. This product is outside them.</span><a class="btn" href="#pro">See Pro</a></div>` + numbers + actions + recentCard;
   const weeks = history.slice(-12), bars = [...weeks.map((v) => ({ value: v, label: 'Week' })), ...fc.weeks.map((v, i) => ({ value: v, label: `Forecast +${i + 1} wk`, forecast: true }))];
   const how = fc.method === 'ensemble'
     ? `<div class="card" style="gap:6px"><h2>How this forecast was made</h2><span class="sub">${fc.models.length} methods blended. Each was tested by pretending it was 1 to ${fc.tested_weeks || 8} weeks ago and comparing its forecast with what really sold.</span>${fc.models.map((m) => `<div style="display:grid;gap:3px"><div class="row between"><span>${esc(m.label)}</span><span class="label num">${Math.round(m.weight * 100)}% of the blend</span></div><div class="meter"><i style="width:${Math.round(m.weight * 100)}%"></i></div></div>`).join('')}<span class="muted">${fc.accuracy != null ? `Blend accuracy on the tested weeks: ${Math.round(fc.accuracy * 100)}%.` : 'Not enough weeks yet to measure accuracy.'}${fc.seasonal ? ' Includes the same weeks last year.' : ''}${fc.intermittent ? ' Uses methods made for slow, lumpy sellers.' : ''}</span></div>`
@@ -507,9 +508,9 @@ function account() {
 
 function pro() {
   setTop('<a href="#ai">‹ Tools</a><span>StockPilot Pro</span>');
-  const feats = ['Weekly forecasts and stock plans for every product', 'AI second opinion on your Weekly Plan, checked against live events and news', "Live Trend Scout: AI searches the web for what's booming in your exact niche", 'Deeper AI Product Check with web research', 'AI assistant for any question about your store', 'AI-polished listings'];
+  const feats = [`Forecasts, reorder dates, weekly plan and supplier orders for up to ${PRO_LIMIT} products (Free: ${FREE_LIMIT})`, 'Your money makers: which products earn your profit, and which lose money', 'Bought together: bundle ideas from your own orders', 'Export orders, forecasts and stock to a spreadsheet (in the app)'];
   if (S.plan === 'pro') return `<h1>You're on Pro</h1><div class="card"><ul class="bullets">${feats.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div><button class="btn secondary" data-plan="free">Switch the preview back to Free</button>`;
-  return `<div><h1>Sell smarter with Pro</h1><p class="sub">Forecast every product, get your AI plan every week, and spot trends before your competitors.</p></div><div class="card"><h2>Pro</h2><ul class="bullets">${feats.map((f) => `<li>${esc(f)}</li>`).join('')}</ul><span class="muted">Free for everyone: dashboard, stock, imports, weekly to-do list, money makers, bundles, profit calculator, trends library, product check, instant answers and listing drafts · forecasts for your top ${FREE_LIMIT} products · 3 AI requests a month</span></div><button class="btn" data-plan="pro">Monthly · price you set in Google Play</button><button class="btn secondary" data-plan="pro">Yearly · price you set in Google Play</button><span class="muted">In the app these open the Google Play payment sheet. Here they switch the preview to Pro.</span>`;
+  return `<div><h1>Sell smarter with Pro</h1><p class="sub">Track 3 times as many products, see which ones make your money, find bundles, and export to spreadsheets.</p></div><div class="card"><h2>Pro</h2><ul class="bullets">${feats.map((f) => `<li>${esc(f)}</li>`).join('')}</ul><span class="muted">Free for everyone: imports from every platform, dashboard, weekly to-do list, supplier orders, profit calculator, trends, product check, instant answers and listing drafts, for up to ${FREE_LIMIT} products.</span></div><button class="btn" data-plan="pro">Monthly · price you set in Google Play</button><button class="btn secondary" data-plan="pro">Yearly · price you set in Google Play</button><span class="muted">In the app these open the Google Play payment sheet. Here they switch the preview to Pro.</span>`;
 }
 
 /* ---------- Tools (everything works without AI; AI is an optional extra) ---------- */
@@ -607,7 +608,7 @@ function weeklyPlan() {
   <div class="card"><span class="label">Outlook</span><span>${esc(plan.next_week_outlook)}</span></div>
   <h2>Do this week</h2>${plan.actions.length ? plan.actions.map((a) => actionCard(a, bySku)).join('') : '<div class="card"><b>All clear ✓</b><span class="sub">Stock covers expected sales on every product.</span></div>'}
   ${plan.actions.some((a) => a.kind === 'reorder' || a.kind === 'restock_urgent') ? '<a class="btn" href="#orders">Draft my supplier orders</a>' : ''}
-  ${F.locked_count ? `<a class="card tap" href="#pro"><b>${F.locked_count} products aren't in this plan</b><span class="sub">Free plans cover your top ${FREE_LIMIT} sellers. Pro plans every product.</span></a>` : ''}
+  ${F.locked_count ? `<a class="card tap" href="#pro"><b>${F.locked_count} products aren't in this plan</b><span class="sub">Your plan covers your ${S.plan === 'pro' ? PRO_LIMIT : FREE_LIMIT} best sellers.${S.plan === 'pro' ? '' : ` Pro covers ${PRO_LIMIT}.`}</span></a>` : ''}
   <div class="card" style="gap:8px"><b>Want a second opinion?</b><span class="sub">AI can look for things your sales history can't know about, like seasonal swings and how this year's events could change next week.</span><button class="btn secondary" data-ai="plan" ${S.busy.plan ? 'disabled' : ''}>${r ? 'Check again with AI' : 'Check with AI (optional)'}</button></div>
   ${S.busy.plan ? spinner('AI is reading your forecasts and upcoming events…') : ''}${aiNote('plan')}${ai}`;
 }
@@ -804,6 +805,7 @@ function answerLocally(q) {
     return `${dead.length} product${dead.length > 1 ? 's haven’t' : ' hasn’t'} sold in 30 days, with about ${money(cash, 0)} tied up at cost:\n` + list(dead.slice(0, 5).map((p) => `${p.name}: ${p.stock_qty} in stock, ${money(p.stock_qty * p.cost_price, 0)}`)) + '\nTry a bundle with a best seller or a 15–20% discount.';
   }
   if (/together|bundle|pair/.test(t)) {
+    if (S.plan !== 'pro') return 'Bought together shows which products customers buy in the same order, so you can bundle them. That’s part of Pro.';
     const b = insightsData().bundles;
     return b.pairs.length ? 'Customers often buy these together:\n' + list(b.pairs.slice(0, 4).map((p) => `${p.a.name} + ${p.b.name}: ${p.orders_together} orders, ${p.lift}× more often than chance`)) + '\nOffer them as a bundle, or show one on the other’s page.' : b.note;
   }

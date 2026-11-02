@@ -7,6 +7,8 @@ export interface BillingStatus {
   plan_expires_at: string | null;
   ai_calls_used: number;
   ai_calls_limit: number;
+  /** Products that get forecasts, reorder dates and supplier orders on this plan (best sellers first). */
+  product_limit: number;
   plans: Record<Plan, { name: string; features: string[] }>;
 }
 
@@ -384,6 +386,8 @@ export interface SmartPlan {
   made_by: 'numbers';
   store_forecast: ForecastResponse['store'];
   events: ShoppingEvent[];
+  /** Products beyond the plan's limit, not covered by the plan. */
+  locked_count?: number;
 }
 
 export interface LibraryItem {

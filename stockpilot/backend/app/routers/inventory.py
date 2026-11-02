@@ -9,7 +9,6 @@ from sqlmodel import Session, select
 
 from .. import billing, demo, fees, insights, services, trend_library
 from ..auth import current_user
-from ..config import settings
 from ..db import get_session
 from ..forecasting import forecast_weekly, plan_stock, weekly_buckets
 from ..models import Product, Sale, User, utcnow
@@ -167,9 +166,7 @@ def get_product(product_id: int, user: User = Depends(current_user), session: Se
     history = weekly_buckets(((s.sold_at, s.quantity) for s in sales), now, services.HISTORY_WEEKS)
     out["weekly_units"] = history
     # Free plan: full forecasts only for the top sellers, the same rule as the Forecast tab.
-    locked = not billing.is_pro(user) and p.id not in services.unlocked_product_ids(
-        session, user, settings.free_forecast_products, now
-    )
+    locked = p.id not in services.unlocked_product_ids(session, user, billing.product_limit(user), now)
     out["locked"] = locked
     if not locked:
         fc = forecast_weekly(services.uncensor(history, p.stock_qty, p.stock_known), 4)
@@ -264,7 +261,7 @@ def get_forecasts(
     user: User = Depends(current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    limit = None if billing.is_pro(user) else settings.free_forecast_products
+    limit = billing.product_limit(user)
     return services.forecasts(session, user, horizon=horizon, max_products=limit)
 
 
@@ -292,12 +289,12 @@ def get_insights(user: User = Depends(current_user), session: Session = Depends(
 @router.get("/plan")
 def get_smart_plan(user: User = Depends(current_user), session: Session = Depends(get_session)) -> dict:
     """This week's to-do list from the numbers alone (no AI, so free on every plan)."""
-    limit = None if billing.is_pro(user) else settings.free_forecast_products
+    limit = billing.product_limit(user)
     fc = services.forecasts(session, user, max_products=limit)
     dash = services.dashboard(session, user)
     focus, pairs = _insights(session, user)
     plan = insights.smart_plan(fc, dash, focus, pairs, user.currency, utcnow().date().isoformat())
-    return {**plan, "store_forecast": fc["store"], "events": fc["events"]}
+    return {**plan, "store_forecast": fc["store"], "events": fc["events"], "locked_count": fc["locked_count"]}
 
 
 @router.get("/trends/library")

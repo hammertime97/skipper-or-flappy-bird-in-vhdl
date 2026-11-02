@@ -7,18 +7,25 @@ import { Button, Card, Chips, Empty, ErrorBox, Loading, Row, Screen, StatTile, S
 import { Radius, Spacing } from '@/constants/theme';
 import { useApi } from '@/hooks/use-api';
 import { useTheme } from '@/hooks/use-theme';
+import { ExportButton } from '@/components/export-button';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { money, num, orderWhen, pct } from '@/lib/format';
 import type { ForecastItem, StockStatus } from '@/lib/types';
 
 const TREND_LABEL = { rising: '▲ Rising', declining: '▼ Declining', stable: '→ Stable', new: '★ New', no_sales: '– No sales' };
 
 type Filter = 'action' | 'all' | 'rising' | 'declining';
+const PAGE = 50; // big stores: show products a page at a time
 const ACTION: StockStatus[] = ['out_of_stock', 'reorder_now', 'low'];
 
 export default function ForecastScreen() {
+  const { user } = useAuth();
   const { data, error, loading, refreshing, refresh } = useApi(() => api.forecasts(4));
   const [filter, setFilter] = useState<Filter>('action');
+  const [shown, setShown] = useState(PAGE);
+  const pro = user?.billing.plan === 'pro';
+  const productLimit = user?.billing.product_limit ?? 0;
   const cur = data?.currency ?? 'USD';
 
   const items = (data?.items ?? []).filter((it) => {
@@ -99,16 +106,37 @@ export default function ForecastScreen() {
           {data.locked_count > 0 ? (
             <Card style={{ gap: Spacing.sm }}>
               <T style={{ fontWeight: '700' }}>
-                {data.locked_count} more products have forecasts waiting
+                {data.locked_count} more {data.locked_count === 1 ? 'product isn’t' : 'products aren’t'} tracked yet
               </T>
-              <T kind="secondary">Free shows your top sellers. Pro forecasts every product, every week.</T>
-              <Button title="Unlock with Pro" onPress={() => router.push('/paywall')} />
+              <T kind="secondary">
+                {pro
+                  ? `Pro covers your ${productLimit} best-selling products. The rest still show sales and stock in the Stock tab.`
+                  : `Free covers your ${productLimit} best-selling products. Pro covers up to 3 times as many, with forecasts and reorder dates for each.`}
+              </T>
+              {pro ? null : <Button title="Unlock with Pro" onPress={() => router.push('/paywall')} />}
             </Card>
           ) : null}
+          <ExportButton
+            what="forecasts"
+            title="Export forecasts to spreadsheet"
+            rows={() => [
+              ['SKU', 'Product', 'Status', 'In stock', 'Next week (units)', 'Likely low', 'Likely high', 'Week 2', 'Week 3', 'Week 4', 'Trend', 'Accuracy %', 'Suggested order', 'Order by', 'Runs out'],
+              ...data.items
+                .filter((it) => !it.locked && it.forecast && it.stock_plan)
+                .map((it) => {
+                  const f = it.forecast!, sp = it.stock_plan!;
+                  return [
+                    it.product.sku, it.product.name, sp.status.replace(/_/g, ' '), it.product.stock_known ? it.product.stock_qty : '',
+                    f.next_week, f.lower[0], f.upper[0], f.weeks[1], f.weeks[2], f.weeks[3], f.trend,
+                    f.accuracy == null ? '' : Math.round(f.accuracy * 100), sp.reorder_qty, sp.order_by ?? '', sp.stockout_date ?? '',
+                  ];
+                }),
+            ]}
+          />
 
           <Chips
             value={filter}
-            onChange={setFilter}
+            onChange={(f) => { setFilter(f); setShown(PAGE); }}
             options={[
               { value: 'action', label: 'Needs action' },
               { value: 'rising', label: 'Rising' },
@@ -117,9 +145,12 @@ export default function ForecastScreen() {
             ]}
           />
           {items.length === 0 ? <Empty title="All clear" body="Nothing in this list right now." /> : null}
-          {items.map((it) => (
+          {items.slice(0, shown).map((it) => (
             <ForecastRow key={it.product.id} item={it} cur={cur} />
           ))}
+          {items.length > shown ? (
+            <Button title={`Show ${Math.min(PAGE, items.length - shown)} more (${items.length - shown} left)`} kind="secondary" onPress={() => setShown(shown + PAGE)} />
+          ) : null}
         </>
       ) : null}
     </Screen>

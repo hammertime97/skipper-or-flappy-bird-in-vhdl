@@ -69,6 +69,12 @@ export default function WeeklyPlan() {
               <Empty title="All clear ✓" body="Stock covers expected sales on every product." />
             )}
           </Section>
+          {plan.locked_count ? (
+            <T kind="muted">
+              This plan covers the {user?.billing.product_limit} best sellers your plan tracks; {plan.locked_count} more products aren&apos;t
+              tracked{user?.billing.plan === 'pro' ? '' : '. Pro tracks 3 times as many'}.
+            </T>
+          ) : null}
           {hasOrders ? <Button title="Draft my supplier orders" onPress={() => router.push('/orders')} /> : null}
           <Button title="Share this plan" kind="secondary" onPress={sharePlan} />
         </>

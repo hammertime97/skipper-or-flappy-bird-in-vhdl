@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Share, View } from 'react-native';
 
+import { ExportButton } from '@/components/export-button';
 import { Badge, Button, Card, Empty, ErrorBox, Loading, Row, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useApi } from '@/hooks/use-api';
@@ -85,6 +86,28 @@ export default function SupplierOrders() {
             {groups.length} supplier{groups.length > 1 ? 's' : ''} · {groups.reduce((s, g) => s + g.items.length, 0)} products
           </T>
         </Card>
+      ) : null}
+      {data?.locked_count ? (
+        <T kind="muted">
+          Orders cover the {user?.billing.product_limit} best sellers your plan tracks; {data.locked_count} more products aren&apos;t
+          tracked{user?.billing.plan === 'pro' ? '' : '. Pro tracks 3 times as many'}.
+        </T>
+      ) : null}
+      {groups.length ? (
+        <ExportButton
+          what="supplier-orders"
+          title="Export all orders to spreadsheet"
+          rows={() => [
+            ['Supplier', 'SKU', 'Product', 'Order quantity', 'Unit cost', 'Total cost', 'Order by', 'Runs out', 'Why'],
+            ...groups.flatMap((g) =>
+              g.items.map((it) => [
+                g.supplier, it.product.sku, it.product.name, it.stock_plan!.reorder_qty, it.product.cost_price || '',
+                it.product.cost_price ? it.stock_plan!.reorder_qty * it.product.cost_price : '', it.stock_plan!.order_by ?? '',
+                it.stock_plan!.stockout_date ?? '', it.stock_plan!.reason,
+              ]),
+            ),
+          ]}
+        />
       ) : null}
       {groups.map((g) => (
         <Card key={g.supplier} style={{ gap: Spacing.sm }}>

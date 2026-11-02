@@ -8,7 +8,6 @@ from .. import billing, services
 from ..ai import assistant, listing, product_check, trend_scout, weekly_brief
 from ..ai.client import AIError
 from ..auth import current_user
-from ..config import settings
 from ..db import get_session
 from ..models import AIReport, Product, User, utcnow
 
@@ -58,7 +57,7 @@ def _ai_failed(err: AIError) -> HTTPException:
 
 @router.post("/weekly-brief")
 def create_weekly_brief(user: User = Depends(billing.require_ai_quota), session: Session = Depends(get_session)) -> dict:
-    fc = services.forecasts(session, user, max_products=None if billing.is_pro(user) else settings.free_forecast_products)
+    fc = services.forecasts(session, user, max_products=billing.product_limit(user))
     if not any(not it["locked"] and it["forecast"]["history"] for it in fc["items"]):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, {"code": "no_data", "message": "Add products and sales first."})
     dash = services.dashboard(session, user)

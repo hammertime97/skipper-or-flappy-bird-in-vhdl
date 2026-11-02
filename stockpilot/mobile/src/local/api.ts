@@ -24,7 +24,9 @@ import type {
 import { Engine as E, ENGINE_CONFIG as CFG, type Analysis, type Extracted, type LocalProduct, type LocalStore, type Row } from './engine';
 import * as storage from './store';
 
-const FREE_FORECAST_PRODUCTS = 10;
+// How many products get forecasts, reorder dates and supplier orders (best sellers first). Pro: three times Free.
+export const FREE_PRODUCTS = 200;
+export const PRO_PRODUCTS = 600;
 const TRENDS_URL = (process.env.EXPO_PUBLIC_TRENDS_URL ?? '').trim();
 const TRENDS_MAX_AGE = 24 * 3600 * 1000; // look for a newer list at most once a day
 const PREVIEW_ROWS = 4;
@@ -70,28 +72,33 @@ const notFound = () => new ApiError('Not found', 404);
 const iso = (t: number | null | undefined) => (t == null ? null : new Date(t).toISOString());
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
-// On the phone, Pro unlocks the forecast-based features for every product (Free covers the top sellers).
 const PLANS: BillingStatus['plans'] = {
   free: {
     name: 'Free',
     features: [
-      'Dashboard, stock, imports, trends, calculator, product check, instant answers and listing drafts',
-      `Forecasts, reorder dates and supplier orders for your top ${FREE_FORECAST_PRODUCTS} products`,
+      `Forecasts, reorder dates, weekly plan and supplier orders for up to ${FREE_PRODUCTS} products`,
+      'Imports from eBay, Amazon, Shopify, Etsy, TikTok Shop and Excel',
+      'Dashboard, trends, profit calculator, product check, instant answers and listing drafts',
     ],
   },
   pro: {
     name: 'Pro',
     features: [
-      'Forecasts and reorder dates for every product',
-      'Weekly plan and supplier orders covering your whole store',
+      `Forecasts, reorder dates, weekly plan and supplier orders for up to ${PRO_PRODUCTS} products (3× Free)`,
+      'Your money makers: which products earn your profit, and which lose money',
+      'Bought together: bundle ideas from your own orders',
+      'Export orders, forecasts and stock to a spreadsheet',
       'Everything in Free',
     ],
   },
 };
 
+/** Let the screen draw between slices of heavy work. */
+const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 interface Job {
   filename: string;
-  tables: { sheet: string; rows: Row[]; a: Analysis }[];
+  tables: { sheet: string; rows: Row[]; a: Analysis; x: Extracted | null }[];
   shift: number; // samples: move dates so the newest sale is yesterday
 }
 
@@ -115,11 +122,52 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
   };
 
   // ---------------------------------------------------------------- reads
-  let fcCache: { key: string; data: ReturnType<typeof E.forecasts> } | null = null;
-  const forecastsRaw = () => {
-    const key = `${version}:${plan}`;
-    if (!fcCache || fcCache.key !== key) fcCache = { key, data: E.forecasts(store, Date.now(), plan === 'pro' ? null : FREE_FORECAST_PRODUCTS) };
-    return fcCache.data;
+  const limit = () => (plan === 'pro' ? PRO_PRODUCTS : FREE_PRODUCTS);
+  // Weekly sales end at the end of today, so a day's forecasts can be remembered (memo) and saved:
+  // after the first time, screens open instantly even with hundreds of products.
+  const histEnd = () => Math.floor(Date.now() / DAY) * DAY + DAY;
+  const memo = new Map<string, unknown>();
+  let memoDay = 0;
+  const savedMemo = await storage.loadForecastMemo();
+  if (savedMemo && savedMemo.day === histEnd()) {
+    for (const [k, v] of savedMemo.entries) memo.set(k, v);
+    memoDay = savedMemo.day;
+  }
+  let fcState: { key: string; data: ReturnType<typeof E.forecasts> } | null = null;
+  let fcPending: { key: string; promise: Promise<ReturnType<typeof E.forecasts>> } | null = null;
+
+  const forecastsRaw = async (): Promise<ReturnType<typeof E.forecasts>> => {
+    const end = histEnd(), key = `${version}:${plan}:${end}`;
+    if (fcState?.key === key) return fcState.data;
+    if (fcPending?.key === key) return fcPending.promise;
+    const promise = (async () => {
+      if (memoDay !== end) {
+        memo.clear();
+        memoDay = end;
+      }
+      // Work out the forecasts that aren't remembered yet, a slice at a time, so the app never freezes.
+      const now = Date.now(), bySale = E.salesByProduct(store);
+      let started = Date.now(), computed = 0;
+      for (const p of E.rank(store, E.activeProducts(store), now).slice(0, limit())) {
+        const before = memo.size;
+        E.productForecast(store, p, now, 4, memo, bySale.get(p.id) ?? [], end);
+        computed += memo.size - before;
+        if (Date.now() - started > 25) {
+          await pause();
+          started = Date.now();
+        }
+      }
+      const data = E.forecasts(store, now, limit(), 4, memo, end);
+      fcState = { key, data };
+      if (computed) storage.saveForecastMemo({ day: end, entries: [...memo] });
+      return data;
+    })();
+    fcPending = { key, promise };
+    try {
+      return await promise;
+    } finally {
+      if (fcPending?.key === key) fcPending = null;
+    }
   };
   const byId = (id: number) => store.products.find((p) => p.id === Number(id) && p.stage !== 'archived');
 
@@ -140,7 +188,7 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
     return out;
   }
 
-  const billing = (): BillingStatus => ({ plan, plan_expires_at: null, ai_calls_used: 0, ai_calls_limit: 0, plans: PLANS });
+  const billing = (): BillingStatus => ({ plan, plan_expires_at: null, ai_calls_used: 0, ai_calls_limit: 0, product_limit: limit(), plans: PLANS });
   const me = (): User => ({
     id: 0, email: saved.email || 'On this phone', store_name: store.user.store_name, niche: store.user.niche,
     target_market: store.user.market, currency: store.user.currency || 'USD', billing: billing(),
@@ -155,8 +203,8 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
     };
   }
 
-  function forecasts(): ForecastResponse {
-    const F = forecastsRaw();
+  async function forecasts(): Promise<ForecastResponse> {
+    const F = await forecastsRaw();
     return {
       generated_at: new Date().toISOString(), horizon_weeks: 4, currency: store.user.currency || 'USD', store: F.store, events: F.events,
       locked_count: F.locked_count,
@@ -178,9 +226,8 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
     return x;
   }
 
-  function sheetPreview(t: Job['tables'][number], shift: number): ImportSheet {
-    const a = t.a;
-    const x = a.missing.length ? null : shifted(E.extract(t.rows, a), shift);
+  function sheetPreview(t: Job['tables'][number]): ImportSheet {
+    const a = t.a, x = t.x;
     const examples = !x
       ? []
       : a.kind === 'orders'
@@ -196,7 +243,7 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
 
   function readFile(name: string, buf: ArrayBuffer): Job['tables'] {
     try {
-      const tables = E.readTables(name, buf).map(({ sheet, rows }) => ({ sheet, rows, a: E.analyse(rows) }));
+      const tables = E.readTables(name, buf).map(({ sheet, rows }) => ({ sheet, rows, a: E.analyse(rows), x: null as Extracted | null }));
       if (tables.every((t) => t.rows.length <= t.a.header_row + 1)) {
         throw new E.ImportProblem('We found the column headings but no rows under them. Check the date range when you download the file.');
       }
@@ -207,23 +254,36 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
     }
   }
 
+  /** Reads each sheet's rows once (big files take a moment on a phone), letting the screen draw in between. */
+  async function extractAll(tables: Job['tables'], shift: number) {
+    for (const t of tables) {
+      t.x = t.a.missing.length ? null : shifted(E.extract(t.rows, t.a), shift);
+      await pause();
+    }
+  }
+
   function newJob(filename: string, tables: Job['tables'], shift = 0): ImportPreview {
     const id = nextJob++;
     jobs.set(id, { filename, tables, shift });
-    const sheets = tables.map((t) => sheetPreview(t, shift));
+    const sheets = tables.map(sheetPreview);
     return { job_id: id, filename, sheets, ready: sheets.some((s) => s.ready) };
   }
 
-  function sampleTables(key: string) {
+  async function sampleTables(key: string) {
     const s = samples().find((x) => x.key === key);
     if (!s) throw notFound();
-    const tables = s.files.flatMap((f, i) =>
-      readFile(f.name, b64ToBuffer(f.b64)).map((t) => ({ ...t, sheet: i === 0 ? t.sheet : t.sheet || f.name })),
-    );
+    const tables: Job['tables'] = [];
+    for (const [i, f] of s.files.entries()) {
+      tables.push(...readFile(f.name, b64ToBuffer(f.b64)).map((t) => ({ ...t, sheet: i === 0 ? t.sheet : t.sheet || f.name })));
+      await pause();
+    }
+    await extractAll(tables, 0);
+    // Move the sample's dates so its newest sale is yesterday, whenever it's opened.
     let newest = 0;
-    for (const t of tables) if (t.a.kind === 'orders' && !t.a.missing.length) for (const o of E.extract(t.rows, t.a).orders) newest = Math.max(newest, o.when);
+    for (const t of tables) if (t.x) for (const o of t.x.orders) newest = Math.max(newest, o.when);
     const yesterday = Math.floor(Date.now() / DAY) * DAY - DAY;
     const shift = newest ? Math.round((yesterday - Math.floor(newest / DAY) * DAY) / DAY) * DAY : 0;
+    for (const t of tables) if (t.x) shifted(t.x, shift);
     return { s, tables, shift };
   }
 
@@ -238,8 +298,9 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
       }
       const kind = (o.kind === 'stock' || o.kind === 'orders' ? o.kind : t.a.kind) as Analysis['kind'];
       t.a = { ...t.a, kind, mapping, missing: E.missingFor(kind, mapping) };
+      t.x = t.a.missing.length ? null : shifted(E.extract(t.rows, t.a), job.shift);
     }
-    const ok = job.tables.filter((t) => !t.a.missing.length).map((t) => ({ a: t.a, x: shifted(E.extract(t.rows, t.a), job.shift) }));
+    const ok = job.tables.filter((t) => !t.a.missing.length && t.x).map((t) => ({ a: t.a, x: t.x as Extracted }));
     if (!ok.length) throw new ApiError('Pick the missing columns first.', 400, 'import_error');
     const res = E.applyImport(store, ok);
     changed();
@@ -288,8 +349,9 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
     product: async (id) => {
       const p = byId(id);
       if (!p) throw notFound();
-      const now = Date.now(), st = E.productStats(store, [p], now)[p.id], { history, fc, plan: sp } = E.productForecast(store, p, now);
-      const locked = p.stage === 'active' && forecastsRaw().items.some((it: { product: LocalProduct; locked: boolean }) => it.locked && it.product.id === p.id);
+      const now = Date.now(), st = E.productStats(store, [p], now)[p.id];
+      const { history, fc, plan: sp } = E.productForecast(store, p, now, 4, memo, null, histEnd());
+      const locked = p.stage === 'active' && (await forecastsRaw()).items.some((it: { product: LocalProduct; locked: boolean }) => it.locked && it.product.id === p.id);
       const recent = store.sales.map((s, i) => ({ s, i })).filter(({ s }) => s.pid === p.id && s.when < now).sort((a, b) => b.s.when - a.s.when).slice(0, 20);
       const out: ProductDetail = {
         ...productOut(p, st), weekly_units: history, locked,
@@ -344,10 +406,14 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
     uploadFile: async (file) => {
       const buf = await storage.readPicked(file);
       if (buf.byteLength > 25 * 1024 * 1024) throw new ApiError('Files must be under 25 MB. Export a shorter date range.', 413);
-      return newJob(file.name, readFile(file.name, buf));
+      await pause();
+      const tables = readFile(file.name, buf);
+      await pause();
+      await extractAll(tables, 0);
+      return newJob(file.name, tables);
     },
     trySample: async (key) => {
-      const { s, tables, shift } = sampleTables(key);
+      const { s, tables, shift } = await sampleTables(key);
       const preview = newJob(s.files.map((f) => f.name).join(' + '), tables, shift);
       sampleFor.set(preview.job_id, s);
       return preview;
@@ -428,9 +494,9 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
     },
     insights: async () => insightsData(),
     plan: async (): Promise<SmartPlan> => {
-      const F = forecastsRaw(), ins = insightsData();
+      const F = await forecastsRaw(), ins = insightsData();
       const plan = E.smartPlan(F, E.dashboard(store, Date.now()), ins.focus, ins.bundles, store.user.currency || 'USD', new Date().toISOString().slice(0, 10));
-      return { ...plan, store_forecast: F.store, events: F.events };
+      return { ...plan, store_forecast: F.store, events: F.events, locked_count: F.locked_count };
     },
     trendLibrary: async (): Promise<TrendLibrary> => {
       const lib = await latestTrends(), t = (store.user.niche || '').toLowerCase();
@@ -441,9 +507,9 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
       }
       return { ...(lib as unknown as Omit<TrendLibrary, 'match'>), match };
     },
-    seedDemo: async () => {
+    seedDemo: async (key = 'ebay') => {
+      const { s, tables, shift } = await sampleTables(key);
       store = E.newStore();
-      const { s, tables, shift } = sampleTables('ebay');
       applyJob({ filename: 'demo', tables, shift });
       nameStoreAfter(s);
       changed();

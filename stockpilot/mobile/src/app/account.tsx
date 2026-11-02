@@ -33,14 +33,14 @@ export default function AccountScreen() {
     }
   };
 
-  const loadDemo = () =>
+  const loadDemo = (key?: string) =>
     Alert.alert('Load demo store?', 'This replaces all products and sales with a demo store full of made-up sales.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Replace my data',
         style: 'destructive',
         onPress: async () => {
-          await api.seedDemo();
+          await api.seedDemo(key);
           await refreshUser();
           router.navigate('/');
         },
@@ -98,7 +98,8 @@ export default function AccountScreen() {
         <Button title="Import sales or stock (eBay, Amazon, Shopify, Etsy, TikTok, Excel)" kind="secondary" onPress={() => router.push('/import')} />
         <Button title="Type in stock counts and costs" kind="secondary" onPress={() => router.push('/stock-counts')} />
         <Button title="Selling fees per platform" kind="secondary" onPress={() => router.push('/fees')} />
-        <Button title="Load demo store" kind="secondary" onPress={loadDemo} />
+        <Button title="Load demo store (7 products)" kind="secondary" onPress={() => loadDemo()} />
+        {local ? <Button title="Load big demo store (550 products)" kind="secondary" onPress={() => loadDemo('bigstore')} /> : null}
       </Card>
 
       {local ? (

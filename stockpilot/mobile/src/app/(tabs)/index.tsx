@@ -4,7 +4,7 @@ import { Pressable, View } from 'react-native';
 
 import { BarChart } from '@/components/charts';
 import { Icon } from '@/components/icons';
-import { InsightSections, PlanCard } from '@/components/insights';
+import { InsightSections, PlanCard, ProTeaser } from '@/components/insights';
 import { Button, Card, Chips, Empty, ErrorBox, Loading, Row, Screen, Section, StatTile, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useApi } from '@/hooks/use-api';
@@ -15,22 +15,23 @@ import { money, num, shortDate } from '@/lib/format';
 import type { Product } from '@/lib/types';
 
 export default function DashboardScreen() {
-  const { user } = useAuth();
+  const { user, local } = useAuth();
   const c = useTheme();
   const { data, error, loading, refreshing, refresh } = useApi(api.dashboard);
   const plan = useApi(api.plan);
   const insights = useApi(api.insights);
   const [period, setPeriod] = useState<'7d' | '30d'>('7d');
-  const [seeding, setSeeding] = useState(false);
+  const [seeding, setSeeding] = useState<string | null>(null);
   const cur = data?.currency ?? user?.currency ?? 'USD';
+  const pro = user?.billing.plan === 'pro';
 
-  const seed = async () => {
-    setSeeding(true);
+  const seed = async (key?: string) => {
+    setSeeding(key ?? 'small');
     try {
-      await api.seedDemo();
+      await api.seedDemo(key);
       await Promise.all([refresh(), plan.refresh(), insights.refresh()]);
     } finally {
-      setSeeding(false);
+      setSeeding(null);
     }
   };
 
@@ -56,7 +57,16 @@ export default function DashboardScreen() {
           action={
             <View style={{ gap: Spacing.sm, alignSelf: 'stretch' }}>
               <Button title="Import my sales (2 minutes)" onPress={() => router.push('/import')} />
-              <Button title="Just look around with a demo store" kind="secondary" onPress={seed} loading={seeding} />
+              <Button title="Just look around with a demo store" kind="secondary" onPress={() => seed()} loading={seeding === 'small'} disabled={!!seeding} />
+              {local ? (
+                <Button
+                  title="Try a big demo store (550 products)"
+                  kind="secondary"
+                  onPress={() => seed('bigstore')}
+                  loading={seeding === 'bigstore'}
+                  disabled={!!seeding}
+                />
+              ) : null}
               <Button title="Add a product by hand" kind="secondary" onPress={() => router.push('/product/edit')} />
             </View>
           }
@@ -126,7 +136,16 @@ export default function DashboardScreen() {
             <ProductList products={data.top_sellers} cur={cur} detail={(p) => `${money(p.revenue_30d ?? 0, cur)} · ${p.units_30d} sold`} />
           </Section>
 
-          {insights.data ? <InsightSections data={insights.data} cur={cur} /> : null}
+          {insights.data ? (
+            pro ? (
+              <InsightSections data={insights.data} cur={cur} />
+            ) : (
+              <ProTeaser
+                title="Your money makers & bought together"
+                body="See which few products earn most of your profit, which ones lose money, and which products customers buy together, so you can bundle them."
+              />
+            )
+          ) : null}
 
           {data.dead_stock.length ? (
             <Section title="Not selling">

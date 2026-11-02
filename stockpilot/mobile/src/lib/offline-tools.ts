@@ -91,7 +91,11 @@ export interface StoreData {
   ins: Insights;
   products: Product[];
   cur: string;
+  /** Pro unlocks the money-makers and bought-together analysis. */
+  pro: boolean;
 }
+
+const PRO_NOTE = 'That’s part of Pro (Account → Upgrade to Pro).';
 
 export const STARTERS = [
   'What should I reorder this week?',
@@ -140,6 +144,7 @@ export function answerQuestion(q: string, d: StoreData): string | null {
     return `${dead.length} product${dead.length > 1 ? 's haven’t' : ' hasn’t'} sold in 30 days, with about ${m(cash)} tied up at cost:\n` + list(dead.slice(0, 5).map((p) => `${p.name}: ${p.stock_qty} in stock, ${m(p.stock_qty * p.cost_price)}`)) + '\nTry a bundle with a best seller or a 15–20% discount. Your Weekly Plan shows the lowest price that still covers cost and fees.';
   }
   if (/together|bundle|pair|cross.?sell/.test(t)) {
+    if (!d.pro) return `Bought together shows which products customers buy in the same order, so you can bundle them. ${PRO_NOTE}`;
     const b = d.ins.bundles;
     return b.pairs.length ? 'Customers often buy these together:\n' + list(b.pairs.slice(0, 4).map((p) => `${p.a.name} + ${p.b.name}: ${p.orders_together} orders, ${p.lift}× more often than chance`)) + '\nOffer them as a bundle, or show one on the other’s page.' : b.note;
   }
@@ -169,11 +174,12 @@ export function answerQuestion(q: string, d: StoreData): string | null {
   }
   if (/profit|best|top|most|money|earn|margin|seller|worst|losing/.test(t)) {
     const top = [...d.products].sort((a, b) => (b.profit_30d ?? 0) - (a.profit_30d ?? 0));
-    const losing = d.ins.focus.items.filter((r) => r.group === 'losing');
+    const losing = d.pro ? d.ins.focus.items.filter((r) => r.group === 'losing') : [];
     if (/worst|losing/.test(t)) {
+      if (!d.pro) return `“Your money makers” shows which products lose money after cost and fees. ${PRO_NOTE}`;
       return losing.length ? `${losing.length} product${losing.length > 1 ? 's are' : ' is'} losing money after cost and fees:\n` + list(losing.slice(0, 5).map((r) => `${r.name}: ${m(r.profit)} over 90 days`)) + '\nCheck the price, or what you pay per item.' : 'No product is losing money after cost and fees.';
     }
-    return `${top[0].name} made the most profit in the last 30 days: ${m(top[0].profit_30d ?? 0)} after fees.\n` + list(top.slice(1, 4).map((p) => `${p.name}: ${m(p.profit_30d ?? 0)}`)) + `\n${d.ins.focus.summary}` + (losing.length ? ` ${losing.length} product${losing.length > 1 ? 's are' : ' is'} losing money: ${losing.slice(0, 3).map((r) => r.name).join(', ')}.` : '');
+    return `${top[0].name} made the most profit in the last 30 days: ${m(top[0].profit_30d ?? 0)} after fees.\n` + list(top.slice(1, 4).map((p) => `${p.name}: ${m(p.profit_30d ?? 0)}`)) + (d.pro ? `\n${d.ins.focus.summary}` : '') + (losing.length ? ` ${losing.length} product${losing.length > 1 ? 's are' : ' is'} losing money: ${losing.slice(0, 3).map((r) => r.name).join(', ')}.` : '');
   }
   const words = t.split(/[^a-z0-9]+/).filter((w) => w.length > 3);
   const hit = d.products

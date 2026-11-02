@@ -25,7 +25,9 @@ class Settings:
     # AI calls a free-plan user gets each calendar month (a taste of Pro).
     free_ai_calls_per_month: int = field(default_factory=lambda: _env_int("FREE_AI_CALLS_PER_MONTH", 3))
     # Free plan sees statistical forecasts for this many products.
-    free_forecast_products: int = field(default_factory=lambda: _env_int("FREE_FORECAST_PRODUCTS", 10))
+    free_forecast_products: int = field(default_factory=lambda: _env_int("FREE_FORECAST_PRODUCTS", 200))
+    # Pro tracks three times as many products.
+    pro_forecast_products: int = field(default_factory=lambda: _env_int("PRO_FORECAST_PRODUCTS", 600))
     cors_origins: list[str] = field(
         default_factory=lambda: [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
     )

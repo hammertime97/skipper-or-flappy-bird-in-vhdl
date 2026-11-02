@@ -68,7 +68,7 @@ def parity_fixtures() -> None:
     (fx / "config.json").write_text(json.dumps(config()))
     now = datetime(2026, 10, 27, tzinfo=timezone.utc)
     expected = {}
-    for key in ["ebay", "amazon", "shopify", "shopify-products", "etsy", "tiktok", "spreadsheet"]:
+    for key in ["ebay", "amazon", "shopify", "shopify-products", "etsy", "tiktok", "spreadsheet", "bigstore"]:
         fn, data = samples.build(key, now=now)
         (fx / fn).write_bytes(data)
         res = []

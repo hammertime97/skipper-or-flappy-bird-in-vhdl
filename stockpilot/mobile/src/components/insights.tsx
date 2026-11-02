@@ -100,3 +100,17 @@ export function InsightSections({ data, cur }: { data: Insights; cur: string }) 
     </>
   );
 }
+
+/** What a Free user sees where a Pro feature would be. */
+export function ProTeaser({ title, body }: { title: string; body: string }) {
+  return (
+    <Card style={{ gap: Spacing.sm }} onPress={() => router.push('/paywall')}>
+      <Row style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        <T kind="heading">{title}</T>
+        <Badge text="Pro" tone="tint" />
+      </Row>
+      <T kind="secondary">{body}</T>
+      <T style={{ fontWeight: '700' }}>See Pro →</T>
+    </Card>
+  );
+}

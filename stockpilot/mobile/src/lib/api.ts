@@ -127,7 +127,8 @@ const remoteApi = {
   insights: () => request<Insights>('GET', '/insights'),
   plan: () => request<SmartPlan>('GET', '/plan'),
   trendLibrary: () => request<TrendLibrary>('GET', '/trends/library'),
-  seedDemo: () => request<{ products: number; sales: number }>('POST', '/demo/seed'),
+  /** Replace the data with a demo store; on the phone, `key` picks which sample store (e.g. "bigstore"). */
+  seedDemo: (key?: string) => request<{ products: number; sales: number }>('POST', `/demo/seed${key ? `?store=${encodeURIComponent(key)}` : ''}`),
 
   weeklyBrief: () => request<WeeklyBriefReport>('POST', '/ai/weekly-brief'),
   trendScout: (niche?: string, market?: string) =>

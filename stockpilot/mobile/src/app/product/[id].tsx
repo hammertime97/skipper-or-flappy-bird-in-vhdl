@@ -58,8 +58,11 @@ export default function ProductScreen() {
 
       {p.locked || !fc || !plan ? (
         <Card style={{ gap: Spacing.sm }}>
-          <T style={{ fontWeight: '700' }}>🔒 Forecast and stock plan are part of Pro</T>
-          <T kind="secondary">On the Free plan, forecasts cover your top sellers. This product is outside them.</T>
+          <T style={{ fontWeight: '700' }}>🔒 Not tracked on your plan yet</T>
+          <T kind="secondary">
+            Forecasts and reorder dates cover your best-selling products, up to your plan&apos;s limit. This product is outside them; Pro
+            covers 3 times as many.
+          </T>
           <Button title="See Pro" onPress={() => router.push('/paywall')} />
         </Card>
       ) : (
