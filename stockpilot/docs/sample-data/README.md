@@ -11,6 +11,7 @@ screen without real data. Each file is in the same layout as that platform's own
 | etsy-order-items-sample.csv | Little Gem Studio (jewelry) | Etsy Order Items download |
 | tiktok-orders-sample.csv | GlowLab (beauty gadgets) | TikTok Shop order export |
 | my-shop-spreadsheet-sample.xlsx | Bloom & Bark (eco pet products) | A seller's own Excel sheet with Sales and Stock tabs |
+| urban-nest-ebay-orders-sample.csv + bigstore-stock-sample.csv | Urban Nest Home & Tech: a big store with 554 products (sizes, colours, models) | eBay orders report (about 6,800 lines) and a stock list with categories and suppliers |
 | *-stock-sample.csv | | Simple stock lists to upload after a sales file |
 
-The app can also generate fresh copies dated up to yesterday ("Try a sample file" on the import screen).
+The app can also generate fresh copies dated up to yesterday ("Try a sample file" on the import screen). To regenerate these files: `python backend/scripts/write_samples.py docs/sample-data 2026-10-27`.

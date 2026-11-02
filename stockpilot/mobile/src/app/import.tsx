@@ -128,6 +128,10 @@ export default function ImportScreen() {
             <T kind="label">Tip</T>
             <T kind="secondary">{guide.tip}</T>
             <T kind="secondary">{guide.stock_tip}</T>
+            <T kind="secondary">
+              Downloaded it on a computer? Email the file to yourself or save it to Google Drive, then pick it from there with the button
+              below.
+            </T>
           </Card>
           <Button title="I have my file: choose it" onPress={pickFile} loading={busy === 'file'} />
           <Button title={`No file yet? Try a sample ${guide.key === 'spreadsheet' ? 'Excel' : guide.name} file`} kind="secondary" onPress={trySample} loading={busy === 'sample'} />

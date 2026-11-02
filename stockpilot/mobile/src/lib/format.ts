@@ -11,6 +11,12 @@ export function money(value: number, currency = 'USD', compact = false): string 
   }
 }
 
+/** Currencies sellers can pick (ISO codes). A list, not free text, so a typo can't break every price. */
+export const CURRENCIES = [
+  'USD', 'GBP', 'EUR', 'CAD', 'AUD', 'NZD', 'AED', 'SAR', 'INR', 'PKR', 'NGN', 'ZAR', 'KES', 'EGP', 'TRY', 'MXN', 'BRL',
+  'JPY', 'CNY', 'HKD', 'SGD', 'MYR', 'IDR', 'PHP', 'THB', 'VND', 'KRW', 'CHF', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'ILS',
+] as const;
+
 export function num(value: number, digits = 0): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: digits }).format(value);
 }

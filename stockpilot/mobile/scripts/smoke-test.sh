@@ -98,6 +98,27 @@ alive
 # Reopen the app: on-phone data must still be there.
 adb shell am force-stop "$PKG"; sleep 2; adb shell am start -n "$PKG/.MainActivity"
 expect "This week's plan" 90; seek "Profit after fees"; shot reopened; screen "After reopening"
+# Excel through the importer (SheetJS on the phone).
+tap "Home" 3; tap "Account" 3; tap "Import sales or stock" 3; expect "Where do you sell?" 20
+tap "My own spreadsheet" 3; tap "No file yet? Try a sample" 8; seek "Looks right: import" 5; screen "Excel preview"
+tap "Looks right: import" 6; seek "See my dashboard" 3; alive; shot excel-done; screen "Excel imported"
+adb shell input keyevent KEYCODE_BACK; sleep 2
+# A big store: 554 products. Time each screen on the phone.
+ms() { date +%s%3N; }
+tap "Home" 3; tap "Account" 3; tap "Load big demo store" 2; tap "Replace my data" 1
+t0=$(ms); expect "Urban Nest" 120; seek "Profit after fees"; echo "TIMING big store loaded and Home shown: $(( $(ms) - t0 )) ms"; alive; shot big-home; screen "Big store home"
+t0=$(ms); tap "Forecast" 1; expect "Next week" 120; echo "TIMING Forecast tab (first time, 200 products on Free): $(( $(ms) - t0 )) ms"; seek "tracked yet"; shot big-forecast; screen "Big store forecast"
+tap "Tools" 3; t0=$(ms); tap "See what to order" 1; expect "Total at cost price" 120; echo "TIMING Supplier orders: $(( $(ms) - t0 )) ms"; shot big-orders; screen "Big store orders"
+adb shell input keyevent KEYCODE_BACK; sleep 2
+# Pro (test switch), then the Pro-only parts.
+tap "Upgrade to Pro" 3; expect "Products tracked" 20; shot paywall; tap "Try Pro on this phone" 3
+t0=$(ms); tap "Forecast" 1; expect "Next week" 120; echo "TIMING Forecast tab on Pro (554 products): $(( $(ms) - t0 )) ms"; alive
+tap "Export forecasts to spreadsheet" 4; shot export-share-sheet; screen "Share sheet"; alive; adb shell input keyevent KEYCODE_BACK; sleep 2
+tap "Home" 3; seek "Your money makers"; seek "Bought together"; shot pro-home; screen "Pro home"
+# Reopen with the big store: remembered forecasts should make it quick.
+adb shell am force-stop "$PKG"; sleep 2; t0=$(ms); adb shell am start -n "$PKG/.MainActivity"
+expect "Urban Nest" 120; echo "TIMING reopen to Home (big store): $(( $(ms) - t0 )) ms"
+t0=$(ms); tap "Forecast" 1; expect "Next week" 120; echo "TIMING Forecast tab after reopening: $(( $(ms) - t0 )) ms"; alive
 adb logcat -d -s ReactNativeJS:V AndroidRuntime:E > "$OUT/logcat.txt"
 if grep -E "FATAL EXCEPTION|Unhandled (JS )?Exception|TypeError|ReferenceError" "$OUT/logcat.txt"; then fail "errors in the log"; fi
 echo "SMOKE OK"

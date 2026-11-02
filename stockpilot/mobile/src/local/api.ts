@@ -3,6 +3,7 @@
  * phone. No account, no server, works offline. AI features need the server and say so.
  */
 import { ApiError } from '@/lib/api-error';
+import { CURRENCIES } from '@/lib/format';
 import type { RemoteApi } from '@/lib/api';
 import type {
   BillingStatus,
@@ -328,12 +329,8 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
       if (patch.target_market !== undefined) store.user.market = patch.target_market;
       if (patch.currency !== undefined) {
         const c = patch.currency.trim().toUpperCase();
-        try {
-          new Intl.NumberFormat('en-US', { style: 'currency', currency: c });
-          store.user.currency = c;
-        } catch {
-          throw new ApiError(`${c} isn't a currency code we know. Use one like USD, GBP or EUR.`, 400);
-        }
+        if (!(CURRENCIES as readonly string[]).includes(c)) throw new ApiError(`${c} isn't a currency we support. Pick one from the list.`, 400);
+        store.user.currency = c;
       }
       changed();
       return me();

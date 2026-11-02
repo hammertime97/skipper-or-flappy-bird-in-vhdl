@@ -26,11 +26,11 @@ def main():
     if cmd == "texts":
         print("\n".join(label for label, _, _ in found))
         return
-    want = sys.argv[3]
+    want = sys.argv[3].lower()  # Android dialogs may show button labels in capitals
     hits = (
-        [f for f in found if f[0] == want]
-        or [f for f in found if f[0].startswith(want)]
-        or [f for f in found if want in f[0]]
+        [f for f in found if f[0].lower() == want]
+        or [f for f in found if f[0].lower().startswith(want)]
+        or [f for f in found if want in f[0].lower()]
     )
     if not hits:
         sys.exit(1)

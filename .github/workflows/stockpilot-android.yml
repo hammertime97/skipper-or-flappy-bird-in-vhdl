@@ -112,24 +112,37 @@ jobs:
     needs: [build, smoke-test]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           name: StockPilot-test-apk
 
-      - name: Publish the APK as a release
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fresh sample files (dated up to yesterday) to try importing on the phone
+        run: |
+          pip install openpyxl
+          python stockpilot/backend/scripts/write_samples.py samples
+
+      - name: Publish the APK and sample files as a release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="stockpilot-test-${{ github.run_number }}"
-          gh release create "$tag" StockPilot-test.apk \
+          gh release create "$tag" StockPilot-test.apk samples/* \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
             --prerelease \
             --title "StockPilot test build ${{ github.run_number }}" \
-            --notes "Android test build of StockPilot, made from commit ${{ github.sha }}.
+            --notes "Android test build of StockPilot.
 
           Install: open this page on your Android phone, tap StockPilot-test.apk, then Open. If Android asks, allow your browser to install apps.
 
-          Everything runs on the phone: no account, no server, works offline. The trends list updates itself from this repository. Subscriptions can be switched between Free and Pro for testing until Google Play billing is set up.
+          Everything runs on the phone: no account, no server, works offline. Payments aren't connected in test builds: switch between Free and Pro under Tools > Upgrade to Pro.
+
+          Sample files to try the import (made-up stores, dated up to yesterday): download one on your phone, then in the app go to Account > Import sales or stock, pick the platform and choose the file. urban-nest-ebay-orders-sample.csv plus bigstore-stock-sample.csv is a big eBay store with 554 products.
 
           This build was installed and tapped through on an Android 14 emulator before publishing."

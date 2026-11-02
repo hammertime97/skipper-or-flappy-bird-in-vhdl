@@ -61,7 +61,7 @@ Without a server, these also work on the phone, with no AI:
 - **Ask StockPilot:** instant answers from the store's own numbers (what to reorder and by when, profit and best sellers, losing products, slow stock, this week vs last, the last 30 days, next week's forecast, fees, stock value, channels, bought together, any product by name).
 - **Listing Writer:** a ready-to-edit draft built only from the seller's details, within the platform's title limit.
 - **Trends updates:** the app downloads the latest list from `trends/trend-library.json` (the URL is set with `EXPO_PUBLIC_TRENDS_URL`), at most once a day, and keeps it for offline use. To update trends, edit `backend/app/trend_library.py` (with sources), run `python preview/build_preview.py` and push. No app release or server is needed.
-- **Pro without a server:** the app asks Google Play (through RevenueCat) whether the phone's Google account has Pro. Pro unlocks forecasts, reorder dates and supplier orders for every product; Free covers the top 10 sellers. Without a RevenueCat key (test builds), a Free/Pro switch replaces the payment buttons.
+- **Pro without a server:** the app asks Google Play (through RevenueCat) whether the phone's Google account has Pro. Plans are described under Free vs Pro below. Without a RevenueCat key (test builds), a Free/Pro switch replaces the payment buttons.
 
 When a server is configured, the AI features appear as optional extras on the same screens.
 
@@ -84,9 +84,17 @@ AI runs on StockPilot's own servers with StockPilot's API key, so sellers never 
 - All requests turn on Anthropic's server-side fallback (`fallbacks: "default"`), so a request a safety filter declines is retried on another model.
 
 **Free vs Pro**
-- Free: dashboard, stock, import, the weekly to-do plan, money makers, bundles, calculator and trends library; forecasts for the top 10 products (also enforced on product pages); 3 AI requests a month.
-- Pro: forecasts for every product and up to 400 AI requests a month.
-- Set the free limits with `FREE_AI_CALLS_PER_MONTH` and `FREE_FORECAST_PRODUCTS`. The Pro cap is `PRO_AI_CALLS_PER_MONTH` in `backend/app/billing.py`.
+| | Free | Pro |
+|---|---|---|
+| Products tracked: forecasts, reorder dates, weekly plan, supplier orders (best sellers first) | 200 | 600 |
+| Your money makers and Bought together | – | ✓ |
+| Export orders, forecasts and stock to a spreadsheet | – | ✓ |
+| Imports, dashboard, trends, calculator, Product Check, instant answers, listing drafts | ✓ | ✓ |
+| AI requests a month (only with the server) | 3 | 400 |
+
+- Products beyond the limit still import and show sales and stock; they just aren't forecast. Limits apply in the app (`mobile/src/local/api.ts`), the web preview and the server (`FREE_FORECAST_PRODUCTS`, `PRO_FORECAST_PRODUCTS`).
+- Set the free AI allowance with `FREE_AI_CALLS_PER_MONTH`. The Pro AI cap is `PRO_AI_CALLS_PER_MONTH` in `backend/app/billing.py`.
+- Launch paperwork (privacy policy, Play listing text, Data safety and content rating answers, subscription setup): [`docs/launch/`](docs/launch).
 
 ## How it's built
 

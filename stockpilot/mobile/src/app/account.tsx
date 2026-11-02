@@ -2,10 +2,11 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, View } from 'react-native';
 
-import { Badge, Button, Card, ErrorBox, Input, Row, Screen, T } from '@/components/ui';
+import { Badge, Button, Card, Chips, ErrorBox, Input, Row, Screen, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { api, SERVER_ENABLED } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { CURRENCIES } from '@/lib/format';
 
 export default function AccountScreen() {
   const { user, setUser, signOut, refreshUser, local, wipeOnPhone } = useAuth();
@@ -66,13 +67,8 @@ export default function AccountScreen() {
           onChangeText={(v) => setForm({ ...form, target_market: v })}
           placeholder="e.g. UK, US, EU"
         />
-        <Input
-          label="Currency"
-          value={form.currency}
-          onChangeText={(v) => setForm({ ...form, currency: v })}
-          autoCapitalize="characters"
-          maxLength={3}
-        />
+        <T kind="label">Currency</T>
+        <Chips value={form.currency} onChange={(v) => setForm({ ...form, currency: v })} options={CURRENCIES.map((c) => ({ value: c, label: c }))} />
         {error ? <ErrorBox error={error} /> : null}
         <Button title={saved ? 'Saved ✓' : 'Save'} onPress={save} loading={saving} />
       </Card>
