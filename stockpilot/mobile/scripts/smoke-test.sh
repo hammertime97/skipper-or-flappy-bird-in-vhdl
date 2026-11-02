@@ -102,7 +102,7 @@ expect "This week's plan" 90; seek "Profit after fees"; shot reopened; screen "A
 tap "Home" 3; tap "Account" 3; tap "Import sales or stock" 3; expect "Where do you sell?" 20
 tap "My own spreadsheet" 3; tap "No file yet? Try a sample" 8; seek "Looks right: import" 5; screen "Excel preview"
 tap "Looks right: import" 6; seek "See my dashboard" 3; alive; shot excel-done; screen "Excel imported"
-adb shell input keyevent KEYCODE_BACK; sleep 2
+tap "See my dashboard" 3; expect "Profit after fees" 30
 # A big store: 554 products. Time each screen on the phone.
 ms() { date +%s%3N; }
 tap "Home" 3; tap "Account" 3; tap "Load big demo store" 2; tap "Replace my data" 1
