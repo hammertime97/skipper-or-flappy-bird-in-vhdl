@@ -99,7 +99,15 @@ export function listenForTaps(): () => void {
   if (!notificationsSupported) return () => {};
   const open = (r: Notifications.NotificationResponse | null) => {
     const url = r?.notification.request.content.data?.url;
-    if (typeof url === 'string' && url.startsWith('/')) router.push(url as never);
+    if (typeof url !== 'string' || !url.startsWith('/')) return;
+    // Give the navigator a moment when the tap is what started the app.
+    setTimeout(() => {
+      try {
+        router.push(url as never);
+      } catch {
+        // Not ready to navigate: the app stays on Home, which shows the same alerts.
+      }
+    }, 300);
   };
   void Notifications.getLastNotificationResponseAsync().then((r) => {
     if (r) {
