@@ -12,8 +12,9 @@ fail() { echo "SMOKE FAIL: $*"; adb logcat -d -s ReactNativeJS:V AndroidRuntime:
 dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml "$OUT/ui.xml" >/dev/null 2>&1; }
 shot() { step=$((step + 1)); adb exec-out screencap -p > "$OUT/$(printf %02d $step)-$1.png"; }
 alive() { adb shell pidof "$PKG" >/dev/null || fail "app is not running (crashed?)"; }
-expect() { # wait up to $2 seconds for text $1 to be on screen
+expect() { # wait up to $2 seconds for text $1 to be on screen; if it still isn't, scroll to look for it
   for _ in $(seq 1 "${2:-30}"); do dump; python3 "$HERE/ui.py" center "$OUT/ui.xml" "$1" >/dev/null && return 0; sleep 1; done
+  locate_el "$1" >/dev/null && return 0
   echo "--- screen ---"; python3 "$HERE/ui.py" texts "$OUT/ui.xml" | head -60; fail "did not see \"$1\""
 }
 read -r W H < <(adb shell wm size | grep -oE '[0-9]+x[0-9]+' | tail -1 | tr x ' ')
@@ -63,7 +64,7 @@ shot notifications-on
 tap "Forecast" 6; expect "Next week" 60; alive; shot forecast; screen "Forecast"
 tap "Trends" 4; expect "Trending now" 30; shot trends; screen "Trends"
 tap "Add to my store" 3
-tap "Tools" 3; expect "Supplier orders" 30; shot tools
+tap "Tools" 3; expect "Ask StockPilot" 30; seek "Supplier orders"; shot tools
 tap "Find my profit leaks" 4; expect "Slipping away a month" 60; alive; shot leaks; screen "Profit leaks"
 adb shell input keyevent KEYCODE_BACK; sleep 2
 tap "See my alerts" 4; expect "Phone notifications" 60; seek "Turn off notifications"; alive; shot alerts; screen "Alerts"

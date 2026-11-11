@@ -173,14 +173,25 @@ jobs:
       - name: Open it on a simulator
         working-directory: stockpilot/mobile/ios
         run: |
-          device=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k in d for x in d[k] if 'iPhone' in x['name']))")
+          device=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print([x['udid'] for k in sorted(d) for x in d[k] if 'iPhone' in x['name']][-1])")
           xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
           xcrun simctl install "$device" build/Build/Products/Release-iphonesimulator/StockPilot.app
           xcrun simctl launch "$device" com.stockpilot.app
-          sleep 25
-          xcrun simctl io "$device" screenshot "$GITHUB_WORKSPACE/ios-first-open.png"
-          xcrun simctl spawn "$device" launchctl list | grep -q com.stockpilot.app || (echo "StockPilot isn't running on the simulator" && exit 1)
-          echo "StockPilot opened on the iPhone simulator"
+          alive=yes
+          for _ in $(seq 1 12); do
+            sleep 5
+            pgrep -f "StockPilot.app/StockPilot" >/dev/null || { alive=no; break; }
+          done
+          xcrun simctl io "$device" screenshot "$GITHUB_WORKSPACE/ios-first-open.png" || true
+          if [ "$alive" = no ] || ! pgrep -f "StockPilot.app/StockPilot" >/dev/null; then
+            echo "StockPilot stopped on the simulator. App log:"
+            xcrun simctl spawn "$device" log show --last 5m --style compact --predicate 'process == "StockPilot"' | tail -n 120 || true
+            report=$(ls -t ~/Library/Logs/DiagnosticReports/StockPilot* 2>/dev/null | head -1)
+            if [ -n "$report" ]; then echo "--- crash report $report ---"; head -c 12000 "$report"; cp "$report" "$GITHUB_WORKSPACE/ios-crash.ips"; fi
+            exit 1
+          fi
+          echo "StockPilot opened on the iPhone simulator and is still running after a minute"
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -188,6 +199,7 @@ jobs:
           name: ios-simulator-screenshot
           path: |
             ios-first-open.png
+            ios-crash.ips
             ios-build.log
           retention-days: 30
 
