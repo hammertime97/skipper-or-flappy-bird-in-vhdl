@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Linking, Pressable, View } from 'react-native';
 
+import { AlertCard } from '@/components/alert-card';
 import { BarChart } from '@/components/charts';
 import { Icon } from '@/components/icons';
 import { InsightSections, PlanCard, ProTeaser } from '@/components/insights';
@@ -9,9 +10,11 @@ import { Button, Card, Chips, Empty, ErrorBox, Loading, Row, Screen, Section, St
 import { Spacing } from '@/constants/theme';
 import { useApi } from '@/hooks/use-api';
 import { useTheme } from '@/hooks/use-theme';
-import { api } from '@/lib/api';
+import { api, DEMO, GET_APP_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { money, num, shortDate } from '@/lib/format';
+import { notificationsOn, notificationsSupported, scheduleNotifications, turnOnNotifications } from '@/lib/notify';
+import { tokenStore } from '@/lib/token-store';
 import type { Product } from '@/lib/types';
 
 export default function DashboardScreen() {
@@ -20,6 +23,25 @@ export default function DashboardScreen() {
   const { data, error, loading, refreshing, refresh } = useApi(api.dashboard);
   const plan = useApi(api.plan);
   const insights = useApi(api.insights);
+  // The on-phone brain: alerts and profit leaks (server accounts don't have them).
+  const alerts = useApi(async () => (local ? api.alerts() : null));
+  const leaks = useApi(async () => (local ? api.leaks() : null));
+  const [offerNotify, setOfferNotify] = useState(false);
+  useEffect(() => {
+    if (!alerts.data) return;
+    void scheduleNotifications(alerts.data);
+    if (!notificationsSupported) return;
+    void (async () => {
+      if ((await tokenStore.get(NOTIFY_ASKED)) || (await notificationsOn())) return;
+      setOfferNotify(true);
+    })();
+  }, [alerts.data]);
+  const answerNotify = async (yes: boolean) => {
+    setOfferNotify(false);
+    await tokenStore.set(NOTIFY_ASKED, '1');
+    if (yes && (await turnOnNotifications()) && alerts.data) await scheduleNotifications(alerts.data);
+  };
+  const refreshAll = () => Promise.all([refresh(), plan.refresh(), insights.refresh(), alerts.refresh(), leaks.refresh()]);
   const [period, setPeriod] = useState<'7d' | '30d'>('7d');
   const [seeding, setSeeding] = useState<string | null>(null);
   const cur = data?.currency ?? user?.currency ?? 'USD';
@@ -29,14 +51,14 @@ export default function DashboardScreen() {
     setSeeding(key ?? 'small');
     try {
       await api.seedDemo(key);
-      await Promise.all([refresh(), plan.refresh(), insights.refresh()]);
+      await refreshAll();
     } finally {
       setSeeding(null);
     }
   };
 
   return (
-    <Screen refreshing={refreshing} onRefresh={() => Promise.all([refresh(), plan.refresh(), insights.refresh()])}>
+    <Screen refreshing={refreshing} onRefresh={refreshAll}>
       <Row style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <View style={{ flex: 1 }}>
           <T kind="muted">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</T>
@@ -47,6 +69,13 @@ export default function DashboardScreen() {
         </Pressable>
       </Row>
 
+      {DEMO ? (
+        <Card style={{ gap: Spacing.sm, borderColor: c.tint, borderWidth: 2 }}>
+          <T style={{ fontWeight: '700' }}>You’re trying StockPilot with a sample store: 554 products, 6 months of eBay sales, everything unlocked.</T>
+          <T kind="secondary">Tap around: Ask StockPilot a question, open your profit leaks, check what to reorder. To try your own sales file, go to Account → Import sales or stock. It all runs in your browser; nothing is uploaded.</T>
+          {GET_APP_URL ? <Button title="Get the app" onPress={() => Linking.openURL(GET_APP_URL)} /> : null}
+        </Card>
+      ) : null}
       {loading ? <Loading /> : null}
       {error ? <ErrorBox error={error} onRetry={refresh} /> : null}
 
@@ -93,6 +122,26 @@ export default function DashboardScreen() {
             </Card>
           ))}
           {plan.data ? <PlanCard plan={plan.data} /> : null}
+          {alerts.data ? <AttentionCard report={alerts.data} /> : null}
+          {offerNotify ? (
+            <Card style={{ gap: Spacing.sm }}>
+              <T style={{ fontWeight: '700' }}>Want a nudge when something needs you?</T>
+              <T kind="secondary">A short digest every Monday morning, and a reminder on the day each supplier order is due. All worked out on your phone.</T>
+              <Row>
+                <Button title="Turn on" onPress={() => answerNotify(true)} />
+                <Button title="Not now" kind="secondary" onPress={() => answerNotify(false)} />
+              </Row>
+            </Card>
+          ) : null}
+          {leaks.data && leaks.data.count > 0 ? (
+            <Card style={{ gap: 4 }} onPress={() => router.push('/leaks')}>
+              <T kind="label">Profit leaks</T>
+              <T style={{ fontWeight: '700' }}>
+                About {money(leaks.data.monthly_total, cur)} a month is slipping away{leaks.data.cash_total > 0 ? `, and ${money(leaks.data.cash_total, cur)} is stuck in stock` : ''}
+              </T>
+              <T kind="secondary">{leaks.data.count} found, each with the fix →</T>
+            </Card>
+          ) : null}
           <Row style={{ flexWrap: 'wrap' }}>
             <StatTile label="Revenue" value={money(data.kpis[period].revenue, cur)} change={data.kpis[period].change.revenue} />
             <StatTile label="Profit after fees" value={money(data.kpis[period].profit, cur)} change={data.kpis[period].change.profit} />
@@ -172,6 +221,36 @@ export default function DashboardScreen() {
         </>
       ) : null}
     </Screen>
+  );
+}
+
+const NOTIFY_ASKED = 'stockpilot.notify-asked';
+
+/** The few things that need the seller now, from the on-phone alerts. */
+function AttentionCard({ report }: { report: import('@/lib/types').AlertReport }) {
+  const c = useTheme();
+  const top = report.items.filter((a) => a.severity === 'urgent' || a.severity === 'warning').slice(0, 3);
+  const total = report.counts.urgent + report.counts.warning;
+  if (!top.length) {
+    return (
+      <Card style={{ gap: 4 }} onPress={() => router.push('/alerts')}>
+        <T kind="label">Needs your attention</T>
+        <T style={{ fontWeight: '700', color: c.good }}>All clear: nothing urgent today ✓</T>
+      </Card>
+    );
+  }
+  return (
+    <View style={{ gap: Spacing.sm }}>
+      <Row style={{ justifyContent: 'space-between' }}>
+        <T kind="heading">Needs your attention</T>
+        <T style={{ color: c.tint, fontWeight: '700' }} onPress={() => router.push('/alerts')}>
+          See all {total} →
+        </T>
+      </Row>
+      {top.map((a) => (
+        <AlertCard key={a.id} a={a} compact />
+      ))}
+    </View>
   );
 }
 

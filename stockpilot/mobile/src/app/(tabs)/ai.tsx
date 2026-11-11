@@ -9,6 +9,27 @@ import { useAuth } from '@/lib/auth';
 
 const FEATURES: { title: string; body: string; href: Href; cta: string; instant?: boolean }[] = [
   {
+    title: 'Ask StockPilot',
+    body: '“Why did sales drop this week?” “How many water bottles did I sell in October?” “What if I raise the price by 10%?” Answers from your own numbers, with how it worked them out.',
+    href: '/ai/assistant',
+    cta: 'Ask a question',
+    instant: true,
+  },
+  {
+    title: 'Profit leak finder',
+    body: 'Where money quietly slips away: prices below cost after fees, thin margins, discounts left on, missed sales from sell-outs, cash stuck in stock. Each with the fix.',
+    href: '/leaks',
+    cta: 'Find my profit leaks',
+    instant: true,
+  },
+  {
+    title: 'Smart alerts',
+    body: 'What needs you today: sell-outs, order deadlines, sudden drops or spikes in sales. Plus a Monday digest and order-day reminders on your phone.',
+    href: '/alerts',
+    cta: 'See my alerts',
+    instant: true,
+  },
+  {
     title: 'Weekly Plan',
     body: 'Your forecasts turned into a to-do list: what to reorder and by which day, what to push, what to clear.',
     href: '/ai/weekly-plan',
@@ -41,13 +62,6 @@ const FEATURES: { title: string; body: string; href: Href; cta: string; instant?
     body: 'Thinking of adding something? See the profit after fees, whether it’s trending, and rule or shipping red flags, before you spend a cent.',
     href: '/ai/product-check',
     cta: 'Check a product idea',
-    instant: true,
-  },
-  {
-    title: 'Ask StockPilot',
-    body: '“What should I reorder?” “Which product made me the most profit this month?” Instant answers from your own sales, stock and forecasts.',
-    href: '/ai/assistant',
-    cta: 'Ask a question',
     instant: true,
   },
   {

@@ -22,12 +22,18 @@ import type {
   User,
 } from '@/lib/types';
 
+import { findAlerts } from './brain/alerts';
+import { ask as brainAsk } from './brain/ask';
+import { Facts, type FcData } from './brain/facts';
+import { findLeaks, type LeakReport } from './brain/leaks';
 import { Engine as E, ENGINE_CONFIG as CFG, type Analysis, type Extracted, type LocalProduct, type LocalStore, type Row } from './engine';
 import * as storage from './store';
 
 // How many products get forecasts, reorder dates and supplier orders (best sellers first). Pro: three times Free.
 export const FREE_PRODUCTS = 200;
 export const PRO_PRODUCTS = 600;
+/** Profit leaks shown in full on the Free plan (Pro shows them all). */
+export const FREE_LEAKS = 3;
 const TRENDS_URL = (process.env.EXPO_PUBLIC_TRENDS_URL ?? '').trim();
 const TRENDS_MAX_AGE = 24 * 3600 * 1000; // look for a newer list at most once a day
 const PREVIEW_ROWS = 4;
@@ -79,13 +85,15 @@ const PLANS: BillingStatus['plans'] = {
     features: [
       `Forecasts, reorder dates, weekly plan and supplier orders for up to ${FREE_PRODUCTS} products`,
       'Imports from eBay, Amazon, Shopify, Etsy, TikTok Shop and Excel',
-      'Dashboard, trends, profit calculator, product check, instant answers and listing drafts',
+      'Ask StockPilot, smart alerts, Monday digest and the top profit leaks',
+      'Dashboard, trends, profit calculator, product check and listing drafts',
     ],
   },
   pro: {
     name: 'Pro',
     features: [
       `Forecasts, reorder dates, weekly plan and supplier orders for up to ${PRO_PRODUCTS} products (3× Free)`,
+      'Every profit leak, with the fix (Free shows the top 3)',
       'Your money makers: which products earn your profit, and which lose money',
       'Bought together: bundle ideas from your own orders',
       'Export orders, forecasts and stock to a spreadsheet',
@@ -171,6 +179,18 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
     }
   };
   const byId = (id: number) => store.products.find((p) => p.id === Number(id) && p.stage !== 'archived');
+
+  // The on-phone "brain" (Ask StockPilot, profit leaks, alerts) works from one snapshot per data change.
+  let brain: { key: string; facts: Facts; leaks: LeakReport | null } | null = null;
+  const brainState = async () => {
+    const F = await forecastsRaw();
+    const key = `${version}:${plan}:${histEnd()}`;
+    if (brain?.key !== key) {
+      brain = { key, facts: new Facts(store, Date.now(), F as unknown as FcData, plan === 'pro', store.user.currency || 'USD', limit()), leaks: null };
+    }
+    brain.leaks ??= findLeaks(brain.facts, null);
+    return brain as { key: string; facts: Facts; leaks: LeakReport };
+  };
 
   function productOut(p: LocalProduct, stats?: Record<string, unknown>): Product {
     const out: Product = {
@@ -511,6 +531,20 @@ export async function startLocal(email = ''): Promise<LocalHandle> {
       nameStoreAfter(s);
       changed();
       return { products: E.activeProducts(store).length, sales: store.sales.length };
+    },
+
+    leaks: async (): Promise<LeakReport> => {
+      const b = await brainState(), all = b.leaks;
+      if (plan === 'pro') return all;
+      return { ...all, items: all.items.slice(0, FREE_LEAKS), locked_count: Math.max(0, all.items.length - FREE_LEAKS) };
+    },
+    alerts: async () => {
+      const b = await brainState();
+      return findAlerts(b.facts, b.leaks);
+    },
+    askBrain: async (question, ctx) => {
+      const b = await brainState();
+      return brainAsk(question, b.facts, ctx, { freeLimit: FREE_PRODUCTS, proLimit: PRO_PRODUCTS });
     },
 
     weeklyBrief: async () => { throw needsServer(); },

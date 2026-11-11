@@ -1,29 +1,38 @@
 /**
- * Google Play subscriptions through RevenueCat.
+ * Google Play and App Store subscriptions through RevenueCat.
  *
- * Setup (once): create the subscription in Play Console, add it to a RevenueCat
- * offering with an entitlement called "pro", and put the RevenueCat Android public
- * SDK key in EXPO_PUBLIC_REVENUECAT_ANDROID_KEY.
+ * Setup (once): create the subscription in Play Console and/or App Store Connect, add it to a
+ * RevenueCat offering with an entitlement called "pro", and put RevenueCat's public SDK keys in
+ * EXPO_PUBLIC_REVENUECAT_ANDROID_KEY and EXPO_PUBLIC_REVENUECAT_IOS_KEY.
  *
  * With a server, the backend learns about purchases from RevenueCat's webhook and stays the
  * source of truth for the plan. Without one (on-phone mode), the app asks RevenueCat directly
- * whether this Google account has Pro: see hasProOnThisDevice().
+ * whether this Google or Apple account has Pro: see hasProOnThisDevice().
  */
 import { Platform } from 'react-native';
 import Purchases, { type PurchasesPackage } from 'react-native-purchases';
 
-const ANDROID_KEY = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY ?? '';
+const KEY =
+  Platform.OS === 'android'
+    ? (process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY ?? '')
+    : Platform.OS === 'ios'
+      ? (process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY ?? '')
+      : '';
+/** Where subscriptions are billed and managed on this phone. */
+export const STORE = Platform.OS === 'ios'
+  ? { name: 'the App Store', manage: 'https://apps.apple.com/account/subscriptions', where: 'Settings → your name → Subscriptions', account: 'Apple ID' }
+  : { name: 'Google Play', manage: 'https://play.google.com/store/account/subscriptions', where: 'Play Store → Payments & subscriptions', account: 'Google account' };
 export const PRO_ENTITLEMENT = 'pro';
 
 let configured = false;
 
 export function purchasesAvailable(): boolean {
-  return Platform.OS === 'android' && ANDROID_KEY.length > 0;
+  return KEY.length > 0;
 }
 
 function ensureConfigured(appUserID?: string) {
   if (configured || !purchasesAvailable()) return;
-  Purchases.configure({ apiKey: ANDROID_KEY, appUserID });
+  Purchases.configure({ apiKey: KEY, appUserID });
   configured = true;
 }
 
@@ -48,7 +57,7 @@ export async function resetPurchaser() {
 }
 
 /**
- * On-phone mode: does this phone's Google account have an active Pro subscription?
+ * On-phone mode: does this phone's Google or Apple account have an active Pro subscription?
  * Null when subscriptions aren't set up in this build, or RevenueCat can't be reached
  * (then the app keeps the plan it last knew).
  */
@@ -70,7 +79,7 @@ export async function getPackages(): Promise<PurchasesPackage[]> {
   return offerings.current?.availablePackages ?? [];
 }
 
-/** Returns true when the user now has Pro. False if they cancelled the Play sheet. */
+/** Returns true when the user now has Pro. False if they cancelled the store's payment sheet. */
 export async function buy(pkg: PurchasesPackage): Promise<boolean> {
   try {
     const { customerInfo } = await Purchases.purchasePackage(pkg);

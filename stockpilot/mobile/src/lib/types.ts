@@ -407,3 +407,8 @@ export interface TrendLibrary {
   niches: { key: string; name: string; keywords: string[]; summary: string; items: LibraryItem[] }[];
   holiday: { name: string; summary: string; points: { text: string; source: string }[] };
 }
+
+// ---- On-phone brain (src/local/brain) ----
+export type { Alert, AlertReport, Severity } from '@/local/brain/alerts';
+export type { Answer, AskContext } from '@/local/brain/ask';
+export type { Leak, LeakKind, LeakReport } from '@/local/brain/leaks';

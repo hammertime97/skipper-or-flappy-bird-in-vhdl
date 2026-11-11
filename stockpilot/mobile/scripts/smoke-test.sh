@@ -55,10 +55,19 @@ adb shell am start -n "$PKG/.MainActivity" || fail "could not start"
 expect "Just look around with a demo store" 90; alive; shot first-open; screen "First open"
 tap "Just look around with a demo store" 6
 expect "Profit after fees" 90; alive; shot home; screen "Home with demo store"
+# Smart alerts on Home, and the one-time offer of phone notifications (Android asks for permission).
+seek "Needs your attention"
+seek "Want a nudge when something needs you?" 2; tap "Turn on" 3
+dump; if python3 "$HERE/ui.py" center "$OUT/ui.xml" "Allow" >/dev/null; then tap "Allow" 2; fi
+shot notifications-on
 tap "Forecast" 6; expect "Next week" 60; alive; shot forecast; screen "Forecast"
 tap "Trends" 4; expect "Trending now" 30; shot trends; screen "Trends"
 tap "Add to my store" 3
 tap "Tools" 3; expect "Supplier orders" 30; shot tools
+tap "Find my profit leaks" 4; expect "Slipping away a month" 60; alive; shot leaks; screen "Profit leaks"
+adb shell input keyevent KEYCODE_BACK; sleep 2
+tap "See my alerts" 4; expect "Phone notifications" 60; seek "Turn off notifications"; alive; shot alerts; screen "Alerts"
+adb shell input keyevent KEYCODE_BACK; sleep 2
 tap "See what to order" 6; expect "Total at cost price" 60; alive; shot orders; screen "Supplier orders"
 adb shell input keyevent KEYCODE_BACK; sleep 2
 tap "Open this week" 6; expect "Weekly Plan" 60; seek "Do this week"; shot weekly-plan; screen "Weekly plan"
@@ -71,8 +80,12 @@ type_into "24.99" "350"; type_into "6.50" "300"
 tap "Should I sell this?" 3; seek "Skip it at this price"; shot product-check; screen "Product check"
 seek "Is it trending?"; seek "Cheap test plan"
 adb shell input keyevent KEYCODE_BACK; sleep 2
-# Ask without AI: instant answers from the store's own numbers.
-tap "Ask a question" 4; tap "What should I reorder this week?" 4; seek "need ordering"; shot ask; screen "Ask"
+# Ask StockPilot: the on-phone brain answers from the store's own numbers, and explains how.
+tap "Ask a question" 4; tap "What should I reorder?" 4; seek "How I worked this out" 3; shot ask; screen "Ask"
+type_into "Ask about your store…" "why did sales drop this week"; tap "Send" 4; seek "the same days last week" 3
+# The follow-up keeps the question ("why…") and moves it to last month, compared with the month before.
+before_last=$(date -u -d "$(date -u +%Y-%m-01) -2 month" +%B)
+type_into "Ask about your store…" "and last month"; tap "Send" 4; seek "in $before_last" 3; shot ask-follow-up; screen "Ask follow-up"
 adb shell input keyevent KEYCODE_BACK; sleep 2
 # Listing Writer without AI.
 tap "Write a listing" 4; type_into "e.g. Self-cleaning slicker brush" "No-pull dog harness"
@@ -118,6 +131,8 @@ tap "Upgrade to Pro" 3; seek "Products tracked" 3; shot paywall; tap "Try Pro on
 t0=$(ms); tap "Forecast" 1; expect "Expected revenue" 120; echo "TIMING Forecast tab on Pro (554 products): $(( $(ms) - t0 )) ms"; alive
 tap "Export forecasts to spreadsheet" 4; shot export-share-sheet; screen "Share sheet"; alive; adb shell input keyevent KEYCODE_BACK; sleep 2
 tap "Home" 3; seek "Your money makers"; seek "Bought together"; shot pro-home; screen "Pro home"
+tap "Tools" 3; t0=$(ms); tap "Find my profit leaks" 1; expect "Slipping away a month" 120; echo "TIMING Profit leaks (554 products): $(( $(ms) - t0 )) ms"
+seek "Export leaks to spreadsheet"; shot pro-leaks; adb shell input keyevent KEYCODE_BACK; sleep 2
 # Reopen with the big store: remembered forecasts should make it quick.
 adb shell am force-stop "$PKG"; sleep 2; t0=$(ms); adb shell am start -n "$PKG/.MainActivity"
 expect "Urban Nest" 120; echo "TIMING reopen to Home (big store): $(( $(ms) - t0 )) ms"

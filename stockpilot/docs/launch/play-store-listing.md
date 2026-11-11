@@ -22,6 +22,9 @@ HOW IT WORKS
 3. Get your plan: forecasts, reorder dates and supplier orders, in plain English.
 
 WHAT YOU GET
+• Ask StockPilot: "Why did sales drop this week?" "How many water bottles did I sell in October?" "What if I raise the price by 10%?" Answers from your own numbers in seconds, with how it worked them out
+• Profit leak finder: where money quietly slips away (prices below cost after fees, thin margins, discounts left on, missed sales from sell-outs, cash stuck in stock), each with the fix
+• Smart alerts: what needs you today, plus a Monday digest and a reminder on the day each supplier order is due
 • Weekly sales forecast for every product, checked against your own sales history, with how accurate it is
 • Reorder dates: "Order 54 by Friday" so you never sell out, and never over-order
 • Supplier orders: everything to reorder, grouped by supplier, with the message written. Send it by WhatsApp or email in one tap
@@ -30,12 +33,12 @@ WHAT YOU GET
 • Profit & ads calculator: what one sale really earns, and the most you can spend on ads
 • Trending products: what's selling now in your niche, updated every few weeks
 • Product Check: the margin, trend and red flags for a product before you buy stock
-• Ask StockPilot: "What should I reorder?" "What made the most profit?" Answers from your own numbers
 • Listing drafts for eBay, Amazon, Etsy, Shopify and TikTok Shop
 • Works offline; handles stores with hundreds of products
 
 STOCKPILOT PRO
 • Track up to 600 products (Free: 200)
+• Every profit leak with its fix (Free: the top 3)
 • Your money makers: which products earn your profit, and which lose money
 • Bought together: bundle ideas from your own orders
 • Export orders, forecasts and stock to a spreadsheet
@@ -50,7 +53,7 @@ Questions or ideas? [your contact email]
 **Contact email:** [your contact email]
 **Privacy policy URL:** publish `privacy-policy.md` on a web page and paste its address. A free Google Site works.
 
-**Screenshots** (at least 2, phone, 1080×1920 or similar): take them on your phone with the big demo store loaded (Account → Load big demo store). Show these screens: Home, Forecast, Supplier orders, This week's plan, Trends, Pro comparison.
+**Screenshots** (at least 2, phone, 1080×1920 or similar): take them on your phone with the big demo store loaded (Account → Load big demo store). Show these screens: Home (with "Needs your attention"), Ask StockPilot answering "Why did sales drop this week?", Profit leaks, Supplier orders, Forecast, Pro comparison.
 **Feature graphic** (1024×500): the blue app icon on the left, with "Know what to reorder and when" on the right.
 
 ## Data safety form
@@ -61,6 +64,7 @@ Questions or ideas? [your contact email]
 - **Is all user data encrypted in transit?** Yes (HTTPS).
 - **Do you provide a way for users to request that their data is deleted?** Yes: Account → Delete everything on this phone, or uninstall the app.
 - Sales and stock data: **not collected**. It stays on the device and is never sent to you.
+- Notifications are scheduled on the phone itself (no push server), so they collect nothing.
 
 ## Content rating questionnaire
 
@@ -78,6 +82,10 @@ Category: **Utility, productivity, communication or other**. Answer **No** to vi
 - Suggested prices: **$12.99 a month** and **$99.99 a year** (about 2 months free).
 - Add a **7-day free trial** offer to both. Trials are the easiest way to turn Free users into Pro.
 - In RevenueCat, attach both to the entitlement **`pro`** and put them in the **current** offering. The app shows whatever prices Google Play returns, in the buyer's currency.
+
+## Web demo for outreach
+
+Every build also publishes a browser demo of the full app with the 554-product sample store: https://hammertime97.github.io/skipper-or-flappy-bird-in-vhdl/ (works on any phone or computer, nothing to install). Turn it on once: GitHub → the repository → Settings → Pages → Build and deployment → Source: **Deploy from a branch**, Branch: **gh-pages**, folder **/ (root)** → Save. Once the app is on Google Play, set the repository variable `STOCKPILOT_GET_APP_URL` (Settings → Secrets and variables → Actions → Variables) to its Play Store link, so the demo's "Get the app" button goes there.
 
 ## Before you press Publish
 

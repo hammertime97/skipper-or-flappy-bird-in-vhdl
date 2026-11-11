@@ -19,7 +19,8 @@ StockPilot ("the app") is made by [your name or company] ("we"). This policy exp
 ## When the app uses the internet
 
 - **Trends list:** about once a day the app downloads the latest list of trending products (a plain file hosted on [GitHub / your website]). The request is like opening a web page: the host sees your IP address in its normal server logs. No store data is sent.
-- **Subscriptions:** if you buy StockPilot Pro, Google Play handles the payment. The app uses RevenueCat to check whether your Google Play account has an active subscription. RevenueCat receives an anonymous app user ID and your purchase details. It doesn't receive your sales data. See [Google's privacy policy](https://policies.google.com/privacy) and [RevenueCat's privacy policy](https://www.revenuecat.com/privacy).
+- **Subscriptions:** if you buy StockPilot Pro, Google Play (Android) or the App Store (iPhone) handles the payment. The app uses RevenueCat to check whether your account has an active subscription. RevenueCat receives an anonymous app user ID and your purchase details. It doesn't receive your sales data. See [Google's privacy policy](https://policies.google.com/privacy), [Apple's privacy policy](https://www.apple.com/legal/privacy/) and [RevenueCat's privacy policy](https://www.revenuecat.com/privacy).
+- **Notifications:** if you turn them on, the app schedules its Monday digest and order reminders on your phone. There is no push server: nothing about you or your store is sent anywhere to make them work.
 - **Sharing and exports:** when you tap Send order, Share this plan or Export to spreadsheet, the app opens your phone's share sheet. What you share, and with whom, is your choice.
 
 ## What we don't do
@@ -33,7 +34,7 @@ StockPilot ("the app") is made by [your name or company] ("we"). This policy exp
 
 - Account → **Delete everything on this phone** removes all products, sales, settings and saved forecasts.
 - Uninstalling the app also deletes everything it stored.
-- To cancel a subscription, use Google Play → Payments & subscriptions.
+- To cancel a subscription, use Google Play → Payments & subscriptions (Android) or Settings → your name → Subscriptions (iPhone).
 
 ## Children
 

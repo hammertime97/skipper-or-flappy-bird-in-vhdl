@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Linking, View } from 'react-native';
+import { Linking, Platform, View } from 'react-native';
 import type { PurchasesPackage } from 'react-native-purchases';
 
 import { Bullets, Button, Card, ErrorBox, Loading, Row, Screen, T } from '@/components/ui';
@@ -8,13 +8,17 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { api, SERVER_ENABLED } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { buy, getPackages, purchasesAvailable, restore } from '@/lib/purchases';
+import { buy, getPackages, purchasesAvailable, restore, STORE } from '@/lib/purchases';
 import { FREE_PRODUCTS, PRO_PRODUCTS } from '@/local/api';
 
+const PRIVACY_URL = (process.env.EXPO_PUBLIC_PRIVACY_URL ?? '').trim();
+// Apple's standard licence agreement, unless the store listing names your own terms.
+const TERMS_URL = (process.env.EXPO_PUBLIC_TERMS_URL ?? '').trim() || 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 const PERIOD: Record<string, string> = { P1W: 'week', P1M: 'month', P3M: '3 months', P6M: '6 months', P1Y: 'year' };
 
 export default function Paywall() {
   const { user, refreshUser, local, setLocalPlan } = useAuth();
+  const c = useTheme();
   const [packages, setPackages] = useState<PurchasesPackage[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -75,7 +79,7 @@ export default function Paywall() {
           await setLocalPlan('pro');
           router.back();
         } else await waitForServer();
-      } else setError(new Error('No active subscription found for this Google account.'));
+      } else setError(new Error(`No active subscription found for this ${STORE.account}.`));
     } catch (e) {
       setError(e as Error);
     } finally {
@@ -106,21 +110,21 @@ export default function Paywall() {
 
       {local && !purchasesAvailable() ? (
         <Card style={{ gap: Spacing.sm }}>
-          <T style={{ fontWeight: '700' }}>Test build</T>
+          <T style={{ fontWeight: '700' }}>{Platform.OS === 'web' ? 'Demo' : 'Test build'}</T>
           <T kind="secondary">
-            Payments aren&apos;t connected in this test version. Switch between Free and Pro to see what each plan includes.
+            {Platform.OS === 'web' ? 'This is the web demo.' : 'Payments aren’t connected in this test version.'} Switch between Free and Pro to see what each plan
+            includes.
           </T>
-          <Button title={isPro ? 'Switch back to Free' : 'Try Pro on this phone'} onPress={() => setLocalPlan(isPro ? 'free' : 'pro').then(() => router.back())} />
+          <Button
+            title={isPro ? 'Switch back to Free' : Platform.OS === 'web' ? 'Try Pro here' : 'Try Pro on this phone'}
+            onPress={() => setLocalPlan(isPro ? 'free' : 'pro').then(() => router.back())}
+          />
         </Card>
       ) : isPro ? (
-        <Button
-          title="Manage in Google Play"
-          kind="secondary"
-          onPress={() => Linking.openURL('https://play.google.com/store/account/subscriptions')}
-        />
+        <Button title={`Manage in ${STORE.name}`} kind="secondary" onPress={() => Linking.openURL(STORE.manage)} />
       ) : !purchasesAvailable() ? (
         <Card>
-          <T kind="secondary">Subscriptions are available in the Android app from Google Play.</T>
+          <T kind="secondary">Subscriptions are available in the StockPilot app for Android and iPhone.</T>
         </Card>
       ) : packages === null ? (
         <Loading />
@@ -141,9 +145,15 @@ export default function Paywall() {
           {packages.length === 0 && !error ? <T kind="secondary">No plans available right now. Try again later.</T> : null}
           <Button title="Restore purchase" kind="secondary" onPress={doRestore} loading={busy === 'restore'} disabled={!!busy || waiting} />
           <T kind="muted">
-            Billed through Google Play. Cancel anytime in Play Store → Payments & subscriptions. The subscription renews automatically
-            until cancelled.
+            Billed through {STORE.name}. The subscription renews automatically at the price shown until you cancel, at least 24 hours before the
+            end of the period. Cancel anytime in {STORE.where}.
           </T>
+          <Row style={{ flexWrap: 'wrap' }}>
+            {PRIVACY_URL ? <T style={{ color: c.tint }} onPress={() => Linking.openURL(PRIVACY_URL)}>Privacy policy</T> : null}
+            <T style={{ color: c.tint }} onPress={() => Linking.openURL(TERMS_URL)}>
+              Terms of use
+            </T>
+          </Row>
         </View>
       )}
       {waiting ? <T kind="secondary">Activating Pro…</T> : null}
@@ -158,10 +168,12 @@ function Compare({ free, pro }: { free: number; pro: number }) {
   const rows: [string, string, string][] = [
     ['Products tracked: forecasts, reorder dates, weekly plan, supplier orders', `${free}`, `${pro}`],
     ['Your money makers (profit and losing products)', '–', '✓'],
+    ['Profit leak finder', 'Top 3', 'All'],
     ['Bought together (bundle ideas)', '–', '✓'],
     ['Export orders, forecasts and stock to a spreadsheet', '–', '✓'],
     ['Imports from eBay, Amazon, Shopify, Etsy, TikTok Shop and Excel', '✓', '✓'],
-    ['Dashboard, trends, calculator, product check, answers, listing drafts', '✓', '✓'],
+    ['Ask StockPilot, smart alerts, Monday digest', '✓', '✓'],
+    ['Dashboard, trends, calculator, product check, listing drafts', '✓', '✓'],
   ];
   return (
     <Card style={{ gap: Spacing.sm }}>

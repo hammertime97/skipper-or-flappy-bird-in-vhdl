@@ -1,5 +1,6 @@
 # Builds an installable StockPilot APK, taps through it on an Android emulator, and
 # publishes it as a GitHub release so it can be downloaded straight to a phone.
+# Also publishes the web demo (GitHub Pages, gh-pages branch) and checks the iPhone build compiles and opens.
 name: StockPilot Android test build
 
 on:
@@ -50,6 +51,9 @@ jobs:
       - name: Typecheck and lint
         run: npx tsc --noEmit && npx expo lint
 
+      - name: Check Ask StockPilot, profit leaks and alerts on every sample store
+        run: npm run test:brain
+
       - name: Generate the Android project
         run: npx expo prebuild --platform android --no-install --clean
         env:
@@ -72,6 +76,104 @@ jobs:
         with:
           name: StockPilot-test-apk
           path: StockPilot-test.apk
+          retention-days: 30
+
+  web-demo:
+    # The browser demo for sharing: opens on the 554-product sample store with everything unlocked.
+    # Served by GitHub Pages from the gh-pages branch (Settings → Pages → Branch: gh-pages).
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: stockpilot/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: stockpilot/mobile/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build the web demo
+        env:
+          EXPO_PUBLIC_DEMO: "1"
+          EXPO_BASE_URL: /${{ github.event.repository.name }}
+          # Where "Get the app" points: set the STOCKPILOT_GET_APP_URL repository variable to the Play Store page once it's live.
+          EXPO_PUBLIC_GET_APP_URL: ${{ vars.STOCKPILOT_GET_APP_URL || format('https://github.com/{0}/releases', github.repository) }}
+          EXPO_PUBLIC_TRENDS_URL: https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/stockpilot/trends/trend-library.json
+        run: |
+          npx expo export --platform web --output-dir web-demo
+          cp web-demo/index.html web-demo/404.html   # links to any screen open the app
+          touch web-demo/.nojekyll
+
+      - name: Publish to the gh-pages branch
+        working-directory: stockpilot/mobile/web-demo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "StockPilot web demo from ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" gh-pages
+          echo "Demo: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+
+  ios:
+    # The iPhone version: compiles for the simulator, installs and opens it. Doesn't hold up the Android release.
+    runs-on: macos-15
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: stockpilot/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: stockpilot/mobile/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate the iOS project
+        run: npx expo prebuild --platform ios --clean
+        env:
+          CI: 1
+
+      - name: Build for the iPhone simulator
+        working-directory: stockpilot/mobile/ios
+        env:
+          EXPO_PUBLIC_TRENDS_URL: https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/stockpilot/trends/trend-library.json
+        run: |
+          set -o pipefail
+          xcodebuild -workspace StockPilot.xcworkspace -scheme StockPilot -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tail -n 40
+
+      - name: Open it on a simulator
+        working-directory: stockpilot/mobile/ios
+        run: |
+          device=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k in d for x in d[k] if 'iPhone' in x['name']))")
+          xcrun simctl boot "$device"
+          xcrun simctl install "$device" build/Build/Products/Release-iphonesimulator/StockPilot.app
+          xcrun simctl launch "$device" com.stockpilot.app
+          sleep 25
+          xcrun simctl io "$device" screenshot "$GITHUB_WORKSPACE/ios-first-open.png"
+          xcrun simctl spawn "$device" launchctl list | grep -q com.stockpilot.app || (echo "StockPilot isn't running on the simulator" && exit 1)
+          echo "StockPilot opened on the iPhone simulator"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-simulator-screenshot
+          path: ios-first-open.png
           retention-days: 30
 
   smoke-test:

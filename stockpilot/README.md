@@ -45,6 +45,9 @@ Every screen works instantly with no AI request, on every plan. AI adds a second
 
 | Feature | What the seller gets |
 |---|---|
+| **Ask StockPilot** (on the phone, no cloud AI) | Understands everyday questions about any product, family of similar products ("water bottles"), category, supplier, sales channel or period ("last month", "in October", "this week vs last week"), even with typos, and follows up ("and in September?"). Answers sales, profit, rankings, comparisons, *why* sales changed (which products, sell-outs, price changes, fewer vs smaller orders, seasonality), reorder and run-out dates, forecasts, and what-if pricing ("raise it 10%: +$89 a month; you could lose 13% of sales and still earn the same"). Every answer says how it was worked out. Code: `mobile/src/local/brain/`; checked by `npm run test:brain` on every build. |
+| **Profit leak finder** | Where money quietly slips away, in money per month: selling below cost after fees, thin margins, discounts left running, missed sales from sell-outs or stock that runs out before new stock can arrive, a channel that keeps less per sale, cash stuck in slow or excess stock, and products with no cost price. Each with the fix and a suggested price. Free shows the top 3; Pro shows them all. |
+| **Smart alerts** | What needs the seller today (sold out, order today, sudden drops or spikes in a product's sales, big shopping days coming), on Home and in Alerts. Optional phone notifications scheduled on the phone itself, with no server: a Monday digest and a reminder on the morning each supplier order is due. |
 | **Weekly Plan** | A prioritised to-do list from the numbers: what to reorder and the **last day to order** so stock arrives before it runs out, what to push, what to clear (with a bundle partner and the lowest price that still covers cost and fees), and which big shopping event to prepare for. Shareable in one tap. |
 | **Supplier orders** | Everything that needs reordering, grouped by supplier, with the order message written ("I'd like to place an order: 62 × …") and sent through the phone's share sheet (WhatsApp, email, text). |
 | **Your money makers** | 80/20 view: the few products that make most of the profit (after cost and fees), and any product that loses money. |
@@ -87,9 +90,11 @@ AI runs on StockPilot's own servers with StockPilot's API key, so sellers never 
 | | Free | Pro |
 |---|---|---|
 | Products tracked: forecasts, reorder dates, weekly plan, supplier orders (best sellers first) | 200 | 600 |
+| Profit leak finder | Top 3 | All |
 | Your money makers and Bought together | – | ✓ |
 | Export orders, forecasts and stock to a spreadsheet | – | ✓ |
-| Imports, dashboard, trends, calculator, Product Check, instant answers, listing drafts | ✓ | ✓ |
+| Ask StockPilot, smart alerts, Monday digest | ✓ | ✓ |
+| Imports, dashboard, trends, calculator, Product Check, listing drafts | ✓ | ✓ |
 | AI requests a month (only with the server) | 3 | 400 |
 
 - Products beyond the limit still import and show sales and stock; they just aren't forecast. Limits apply in the app (`mobile/src/local/api.ts`), the web preview and the server (`FREE_FORECAST_PRODUCTS`, `PRO_FORECAST_PRODUCTS`).
@@ -156,6 +161,11 @@ Sign up (or tap **Start on this phone**), tap **Import my sales**, pick a platfo
 |---|---|---|
 | **No server** (default) | Everything except accounts and AI | About $0. Google Play keeps 15% of subscriptions, and RevenueCat is free up to about $2,500 a month in revenue. |
 | **With the server** | Adds accounts, sync and the AI features | Hosting about $10–45 a month, plus AI per use: about $0.50–1.00 per research run (web search included) and $0.02–0.08 per chat or listing, at Anthropic's published prices. Lower the Pro AI cap (`PRO_AI_CALLS_PER_MONTH`, 400 today) and the free allowance before launch, so one heavy user can't cost more than they pay. |
+
+## Web demo and iPhone
+
+- **Web demo** for showing sellers: every build publishes the whole app to GitHub Pages (`gh-pages` branch), opening on the 554-product sample store with Pro unlocked: https://hammertime97.github.io/skipper-or-flappy-bird-in-vhdl/. Turn on once in Settings → Pages (Branch: gh-pages). Built with `EXPO_PUBLIC_DEMO=1`; it runs in the browser, so nothing is uploaded.
+- **iPhone**: the same app. The "ios" job compiles it for the simulator and opens it on every build. Store steps and listing text: [`docs/launch/app-store-listing.md`](docs/launch/app-store-listing.md).
 
 ## Launching on Google Play: checklist
 

@@ -21,6 +21,10 @@ import type {
   WeeklyBriefReport,
 } from './types';
 
+import type { AlertReport } from '@/local/brain/alerts';
+import type { Answer, AskContext } from '@/local/brain/ask';
+import type { LeakReport } from '@/local/brain/leaks';
+
 import { ApiError } from './api-error';
 
 export { ApiError };
@@ -31,6 +35,13 @@ export { ApiError };
  */
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? '').trim().replace(/\/$/, '');
 export const SERVER_ENABLED = API_URL.length > 0;
+
+/**
+ * The public web demo (EXPO_PUBLIC_DEMO=1): opens straight into the big sample store with Pro on,
+ * and shows where to get the app (EXPO_PUBLIC_GET_APP_URL).
+ */
+export const DEMO = process.env.EXPO_PUBLIC_DEMO === '1';
+export const GET_APP_URL = (process.env.EXPO_PUBLIC_GET_APP_URL ?? '').trim();
 
 let authToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;
@@ -75,6 +86,8 @@ async function request<T>(method: string, path: string, body?: unknown, form?: F
   }
   return data as T;
 }
+
+const onPhoneOnly = () => new ApiError('This works in on-phone mode (Account → Use on this phone).', 501, 'on_phone_only');
 
 export type ProductInput = Omit<Product, 'id' | 'archived' | 'created_at' | 'stock_known' | 'stage' | 'source'>;
 
@@ -129,6 +142,11 @@ const remoteApi = {
   trendLibrary: () => request<TrendLibrary>('GET', '/trends/library'),
   /** Replace the data with a demo store; on the phone, `key` picks which sample store (e.g. "bigstore"). */
   seedDemo: (key?: string) => request<{ products: number; sales: number }>('POST', `/demo/seed${key ? `?store=${encodeURIComponent(key)}` : ''}`),
+
+  // The on-phone brain. A server build answers these on the phone too (see setLocalApi); here they say so.
+  leaks: (): Promise<LeakReport> => Promise.reject(onPhoneOnly()),
+  alerts: (): Promise<AlertReport> => Promise.reject(onPhoneOnly()),
+  askBrain: (_question: string, _ctx: AskContext | null): Promise<Answer> => Promise.reject(onPhoneOnly()),
 
   weeklyBrief: () => request<WeeklyBriefReport>('POST', '/ai/weekly-brief'),
   trendScout: (niche?: string, market?: string) =>

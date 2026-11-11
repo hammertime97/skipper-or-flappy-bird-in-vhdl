@@ -15,6 +15,7 @@
     "expo-glass-effect": "~58.0.5",
     "expo-image": "~58.0.17",
     "expo-linking": "~58.0.14",
+    "expo-notifications": "58.1.6",
     "expo-router": "~58.0.26",
     "expo-secure-store": "~58.0.2",
     "expo-sharing": "~58.0.20",
@@ -40,6 +41,7 @@
     "@types/react": "~19.3.0",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~58.0.4",
+    "tsx": "4.19.2",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -48,7 +50,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:brain": "tsx --tsconfig tsconfig.json scripts/brain-test/check.mts"
   },
   "private": true
 }

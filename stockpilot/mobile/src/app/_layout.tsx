@@ -2,10 +2,12 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { ActivityIndicator, Platform, Text, View } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { listenForTaps } from '@/lib/notify';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -17,8 +19,18 @@ function RootStack() {
   useEffect(() => {
     if (ready) void SplashScreen.hideAsync();
   }, [ready]);
+  // A tapped notification (Monday digest, order reminder) opens its screen.
+  useEffect(() => (ready && user ? listenForTaps() : undefined), [ready, user]);
 
-  if (!ready) return null;
+  if (!ready) {
+    // The phone shows the splash screen; the web demo shows this while it loads the sample store.
+    return Platform.OS === 'web' ? (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: c.background }}>
+        <ActivityIndicator color={c.tint} size="large" />
+        <Text style={{ color: c.textSecondary, fontSize: 16 }}>Opening StockPilot…</Text>
+      </View>
+    ) : null;
+  }
 
   const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
   const theme = {
@@ -48,6 +60,8 @@ function RootStack() {
           <Stack.Screen name="ai/listing" options={{ title: 'Listing Writer' }} />
           <Stack.Screen name="import" options={{ title: 'Import your sales' }} />
           <Stack.Screen name="paywall" options={{ title: 'StockPilot Pro', presentation: 'modal' }} />
+          <Stack.Screen name="leaks" options={{ title: 'Profit leaks' }} />
+          <Stack.Screen name="alerts" options={{ title: 'Alerts' }} />
         </Stack.Protected>
       </Stack>
     </ThemeProvider>

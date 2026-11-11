@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { startLocal, wipeLocal, type LocalHandle } from '@/local/api';
 
-import { api, SERVER_ENABLED, setAuthToken, setLocalApi, setUnauthorizedHandler } from './api';
+import { api, DEMO, SERVER_ENABLED, setAuthToken, setLocalApi, setUnauthorizedHandler } from './api';
 import { hasProOnThisDevice, identifyPurchaser, resetPurchaser } from './purchases';
 import { tokenStore } from './token-store';
 import type { User } from './types';
@@ -39,8 +39,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localHandle = await startLocal();
     setLocalApi(localHandle.api);
     setLocal(true);
+    // The web demo opens with the big sample store and everything unlocked.
+    if (DEMO && (await localHandle.api.dashboard()).inventory.skus === 0) {
+      await localHandle.api.seedDemo('bigstore');
+      localHandle.setPlan('pro');
+    }
     setUser(await api.me());
-    // No server: Google Play (through RevenueCat) says whether this phone has Pro.
+    // No server: Google Play or the App Store (through RevenueCat) says whether this phone has Pro.
     const pro = await hasProOnThisDevice();
     if (pro !== null && localHandle) {
       localHandle.setPlan(pro ? 'pro' : 'free');

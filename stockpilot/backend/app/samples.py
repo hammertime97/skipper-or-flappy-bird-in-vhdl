@@ -12,7 +12,7 @@ import io
 import math
 import random
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
 
@@ -30,6 +30,8 @@ class SampleProduct:
     item_id: str = ""
     category: str = ""
     supplier: str = ""
+    # Share the selling price has been cut by over the last 30 days (a forgotten discount), for the demo's profit leak finder.
+    slip: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -286,6 +288,13 @@ def _big_store_products() -> tuple[SampleProduct, ...]:
         cost = round(price * cost_share * rng.uniform(0.9, 1.1), 2)
         item_id = str(296_000_000_000 + rank * 7_919)
         out.append(SampleProduct(sku, name, price, cost, weekly, growth, pattern, stock, lead, item_id, category, supplier))
+    # Real shops have a few money problems; the profit leak finder should have something to find.
+    for i in (11, 26, 44):  # bought too dear: every sale loses money after fees
+        out[i] = replace(out[i], cost=round(out[i].price * 0.93, 2), pattern="steady")
+    for i in (17, 33, 58):  # thin margins: about 5–8% left after fees
+        out[i] = replace(out[i], cost=round(out[i].price * 0.78, 2), pattern="steady")
+    for i in (6, 21):  # a discount that was never switched off
+        out[i] = replace(out[i], slip=0.2, pattern="steady")
     return tuple(out)
 
 
@@ -357,6 +366,8 @@ def simulate(store: SampleStore, weeks: int = 26, now: datetime | None = None, s
                 qty = 2 if rng.random() < 0.08 else 1
                 when = day + timedelta(seconds=rng.randint(7 * 3600, 23 * 3600))
                 price = round(p.price * (0.9 if rng.random() < 0.12 else 1.0), 2)
+                if p.slip and d <= 30:
+                    price = round(p.price * (1 - p.slip), 2)
                 sales.append(SimSale(p, when, qty, price, 0, rng.random() < 0.025))
     sales.sort(key=lambda s: s.when)
     # Group some lines into multi-item orders.
