@@ -54,7 +54,7 @@ adb shell am start -n "$PKG/.MainActivity" || fail "could not start"
 # No server in this build: the app opens straight into on-phone mode, no sign-in.
 expect "Just look around with a demo store" 90; alive; shot first-open; screen "First open"
 tap "Just look around with a demo store" 6
-expect "Profit after fees" 90; alive; shot home; screen "Home with demo store"
+expect "This week's plan" 90; alive; seek "Profit after fees"; shot home; screen "Home with demo store"
 # Smart alerts on Home, and the one-time offer of phone notifications (Android asks for permission).
 seek "Needs your attention"
 seek "Want a nudge when something needs you?" 2; tap "Turn on" 3

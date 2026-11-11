@@ -126,7 +126,8 @@ jobs:
 
   ios:
     # The iPhone version: compiles for the simulator, installs and opens it. Doesn't hold up the Android release.
-    runs-on: macos-15
+    # Expo SDK 58 builds its native JSI module with Swift 6 and expects Xcode 26 or newer.
+    runs-on: macos-26
     timeout-minutes: 90
     defaults:
       run:
@@ -139,6 +140,13 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: stockpilot/mobile/package-lock.json
+
+      - name: Use the newest stable Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          xcode=$(ls -d /Applications/Xcode_*.app | grep -vi -e beta -e rc | sort -V | tail -1)
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
 
       - name: Install
         run: npm ci
@@ -153,9 +161,14 @@ jobs:
         env:
           EXPO_PUBLIC_TRENDS_URL: https://raw.githubusercontent.com/${{ github.repository }}/refs/heads/${{ github.ref_name }}/stockpilot/trends/trend-library.json
         run: |
-          set -o pipefail
-          xcodebuild -workspace StockPilot.xcworkspace -scheme StockPilot -configuration Release -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tail -n 40
+          log="$GITHUB_WORKSPACE/ios-build.log"
+          if ! xcodebuild -workspace StockPilot.xcworkspace -scheme StockPilot -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build > "$log" 2>&1; then
+            echo "--- errors ---"; grep -nE "error:|fatal error|\[ExpoModulesJSI\]|BUILD FAILED" "$log" | head -100
+            echo "--- end of log ---"; tail -n 60 "$log"
+            exit 1
+          fi
+          tail -n 5 "$log"
 
       - name: Open it on a simulator
         working-directory: stockpilot/mobile/ios
@@ -173,7 +186,9 @@ jobs:
         if: always()
         with:
           name: ios-simulator-screenshot
-          path: ios-first-open.png
+          path: |
+            ios-first-open.png
+            ios-build.log
           retention-days: 30
 
   smoke-test:
