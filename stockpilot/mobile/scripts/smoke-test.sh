@@ -24,8 +24,8 @@ to_top() { # scroll up until $1 is on screen
   for _ in 1 2 3 4 5 6 7 8 9 10; do dump; python3 "$HERE/ui.py" center "$OUT/ui.xml" "$1" >/dev/null && return 0; swipe_down; done
 }
 locate_el() { # look for $1 on screen, scrolling down, then back up; prints "x y"
-  for dir in down up; do
-    for _ in 1 2 3 4 5 6 7 8; do
+  for dir in down up; do # going up covers the way down plus whatever was already scrolled past
+    for _ in $(seq 1 "$([ "$dir" = down ] && echo 8 || echo 18)"); do
       dump
       python3 "$HERE/ui.py" center "$OUT/ui.xml" "$1" && return 0
       if [ "$dir" = down ]; then swipe_up; else swipe_down; fi
@@ -92,7 +92,7 @@ adb shell input keyevent KEYCODE_BACK; sleep 2
 tap "Write a listing" 4; type_into "e.g. Self-cleaning slicker brush" "No-pull dog harness"
 tap "Write listing" 3; seek "Bullet points"; shot listing; screen "Listing"
 adb shell input keyevent KEYCODE_BACK; sleep 2
-tap "Home" 3; tap "Account" 3; expect "Your store" 20
+tap "Home" 3; to_top "Account"; tap "Account" 3; expect "Your store" 20
 tap "Import sales or stock" 3; expect "Where do you sell?" 20
 tap "Amazon" 3; tap "No file yet? Try a sample" 10; seek "Looks right: import" 5; shot import-preview; screen "Import preview"
 tap "Looks right: import" 8; seek "See my dashboard" 3; alive; shot import-done; screen "Import done"
@@ -116,13 +116,13 @@ alive
 adb shell am force-stop "$PKG"; sleep 2; adb shell am start -n "$PKG/.MainActivity"
 expect "This week's plan" 90; seek "Profit after fees"; shot reopened; screen "After reopening"
 # Excel through the importer (SheetJS on the phone).
-tap "Home" 3; tap "Account" 3; tap "Import sales or stock" 3; expect "Where do you sell?" 20
+tap "Home" 3; to_top "Account"; tap "Account" 3; tap "Import sales or stock" 3; expect "Where do you sell?" 20
 tap "My own spreadsheet" 3; tap "No file yet? Try a sample" 8; seek "Looks right: import" 5; screen "Excel preview"
 tap "Looks right: import" 6; seek "See my dashboard" 3; alive; shot excel-done; screen "Excel imported"
 tap "See my dashboard" 3; seek "Profit after fees" 5
 # A big store: 554 products. Time each screen on the phone.
 ms() { date +%s%3N; }
-tap "Home" 3; tap "Account" 3; tap "Load big demo store" 2; tap "Replace my data" 1
+tap "Home" 3; to_top "Account"; tap "Account" 3; tap "Load big demo store" 2; tap "Replace my data" 1
 t0=$(ms); expect "Urban Nest" 120; seek "Profit after fees"; echo "TIMING big store loaded and Home shown: $(( $(ms) - t0 )) ms"; alive; shot big-home; screen "Big store home"
 t0=$(ms); tap "Forecast" 1; expect "Expected revenue" 120; echo "TIMING Forecast tab (first time, 200 products on Free): $(( $(ms) - t0 )) ms"; seek "tracked yet"; shot big-forecast; screen "Big store forecast"; to_top "Next week"
 tap "Tools" 3; t0=$(ms); tap "See what to order" 1; expect "Total at cost price" 120; echo "TIMING Supplier orders: $(( $(ms) - t0 )) ms"; shot big-orders; screen "Big store orders"
