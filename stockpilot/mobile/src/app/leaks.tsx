@@ -53,16 +53,6 @@ export default function ProfitLeaks() {
               {showHow ? data.how : 'How is this worked out? ›'}
             </T>
           </Card>
-          {data.count === 0 ? <Empty title="No leaks found" body="Prices cover cost and fees, and stock is moving. Check again after your next import." /> : null}
-          {data.items.map((l) => (
-            <LeakCard key={l.id} leak={l} cur={cur} />
-          ))}
-          {data.locked_count > 0 ? (
-            <ProTeaser
-              title={`${data.locked_count} more leak${data.locked_count === 1 ? '' : 's'} found`}
-              body={`Free shows your top ${data.items.length}. Pro shows every leak, with the fix for each, so you can win back the full ${money(data.monthly_total, cur)} a month.`}
-            />
-          ) : null}
           {pro && data.items.length ? (
             <ExportButton
               what="profit-leaks"
@@ -71,6 +61,16 @@ export default function ProfitLeaks() {
                 ['Type', 'Product', 'Problem', 'Fix', 'Per month', 'Cash tied up', 'Suggested price'],
                 ...data.items.map((l) => [KIND[l.kind], l.product_name ?? '', l.title, l.fix, Math.round(l.monthly * 100) / 100, Math.round(l.cash * 100) / 100, l.suggested_price ?? '']),
               ]}
+            />
+          ) : null}
+          {data.count === 0 ? <Empty title="No leaks found" body="Prices cover cost and fees, and stock is moving. Check again after your next import." /> : null}
+          {data.items.map((l) => (
+            <LeakCard key={l.id} leak={l} cur={cur} />
+          ))}
+          {data.locked_count > 0 ? (
+            <ProTeaser
+              title={`${data.locked_count} more leak${data.locked_count === 1 ? '' : 's'} found`}
+              body={`Free shows your top ${data.items.length}. Pro shows every leak, with the fix for each, so you can win back the full ${money(data.monthly_total, cur)} a month.`}
             />
           ) : null}
         </>

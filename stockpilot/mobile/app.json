@@ -86,6 +86,14 @@
           "color": "#2A78D6",
           "enableRemoteNotifications": false
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "usePrecompiledModules": false
+          }
+        }
       ]
     ],
     "experiments": {
